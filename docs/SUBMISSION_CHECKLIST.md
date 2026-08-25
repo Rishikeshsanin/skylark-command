@@ -1,87 +1,125 @@
 # Skylark Command Submission Checklist
 
-Use this checklist only against the **final approved integrated release candidate**. Agent 6 prepares the checklist but does not deploy production.
+Use this checklist only against the **final approved integrated release candidate**.
 
 ## Submission assets
 
 - [ ] **Hosted web URL** — final production URL recorded and opens successfully: `____________________________`
 - [x] **Public GitHub URL** — `https://github.com/Rishikeshsanin/skylark-command`
-- [ ] **Source ZIP** — generated from the approved final SHA/branch, not an older agent branch
-- [x] **Decision Log** — `docs/DECISION_LOG.md` exists; re-check it after final integration for completeness
-- [ ] **Final release SHA** — record here: `____________________________`
+- [ ] **Source ZIP** — generated from the approved final `main` state / final SHA
+- [x] **Decision Log** — `docs/DECISION_LOG.md`
+- [ ] **Final release SHA** — `____________________________`
 
 ## Security / repository hygiene
 
-- [ ] **No committed secrets** — final-tree and git-diff secret scan complete
-- [ ] No real monday.com token appears in code, docs, screenshots, logs, Actions output, or submission ZIP
-- [ ] No real optional AI provider key appears in repository/submission artifacts
+- [ ] Final-tree / final-diff secret scan passes
+- [ ] No real monday token or Gemini key appears in code, docs, screenshots, logs, Actions output, or ZIP
 - [ ] No server secret uses a `NEXT_PUBLIC_` prefix
-- [ ] monday.com access remains query-only/read-only
-- [ ] Canonical chat backend is only `POST /api/chat`; no competing production `/api/copilot` backend
+- [ ] monday access remains query-only/read-only and mutation attempts remain blocked
+- [ ] Canonical chat backend remains only `POST /api/chat`
+- [ ] Controlled errors do not expose stack traces, filesystem paths, or secret values
 
 ## Build and CI
 
-- [ ] `npm install` succeeds on the exact release candidate
+- [ ] `npm ci` succeeds on the exact final candidate without changing `package-lock.json`
 - [ ] `npm test` succeeds
 - [ ] `npm run lint` succeeds
 - [ ] `npm run build` succeeds
-- [ ] Release Gate GitHub Actions workflow is green for the exact release SHA
+- [ ] RC3 / Release Gate GitHub Actions checks are green for the exact final SHA
 
-## Production / preview smoke
+## Vercel configuration
 
-- [ ] Required Vercel environment variables configured
-- [ ] `GET /` passes
-- [ ] `GET /pipeline` passes
-- [ ] `GET /operations` passes
-- [ ] `GET /leadership` passes
-- [ ] `GET /data-health` passes
-- [ ] `GET /copilot` passes
-- [ ] `GET /api/health` returns HTTP 200 and `status: "ok"`
-- [ ] Optional safe `POST /api/chat` smoke passes
-- [ ] **Production smoke complete** against final hosted URL
+Required server environment variables:
 
-## Product verification
+- [ ] `MONDAY_API_TOKEN`
+- [ ] `MONDAY_DEALS_BOARD_ID=5030844099`
+- [ ] `MONDAY_WORK_ORDERS_BOARD_ID=5030844103`
+- [ ] `GEMINI_API_KEY` configured for optional explanation (`AI_API_KEY` is fallback compatibility only)
 
-- [ ] **Desktop verified** — primary navigation, dashboards, data states, Copilot interaction
-- [ ] **Mobile verified** — no blocking overflow/navigation/input issues
-- [ ] **Chat verified** — loading, success, clarification, controlled error/retry behavior
-- [ ] **monday live data verified** — source metadata/timestamps reflect live monday.com runtime data
-- [ ] **Leadership Brief verified** — renders and matches deterministic data output
-- [ ] **Data Health verified** — quality issues/caveats render and do not falsely imply clean data
-- [ ] Pipeline page verified
-- [ ] Operations page verified
-- [ ] Overview page verified
+Never paste secret values into repository files or screenshots.
 
-## Evaluator sanity checks
+## Hosted routes
 
-- [ ] Ask: `What is our current open pipeline?`
-- [ ] Ask: `Show me pipeline by stage.`
-- [ ] Ask: `How healthy are our work orders?`
-- [ ] Ask: `What are our receivables?`
-- [ ] Ask: `Give me a leadership brief.`
-- [ ] Ask: `What data-quality issues should I know about?`
-- [ ] Ask: `Who are our best customers?` and verify a clarification is returned rather than an invented ranking definition
-- [ ] Confirm displayed metrics match deterministic analytics/source truth rather than LLM arithmetic
+- [ ] `GET /`
+- [ ] `GET /copilot`
+- [ ] `GET /pipeline`
+- [ ] `GET /operations`
+- [ ] `GET /leadership`
+- [ ] `GET /data-health`
+- [ ] `GET /api/health` → HTTP 200 / status ok
+- [ ] malformed `POST /api/chat` → controlled 400
 
-## Release evidence to capture
+## Live monday golden baseline
 
-- [ ] Screenshot: Overview
-- [ ] Screenshot: Pipeline
-- [ ] Screenshot: Operations
+Verify dynamically loaded data against the assignment baseline. Do not change the expected values to make a failing build pass.
+
+- [ ] Deals = **346**
+- [ ] Work Orders = **176**
+- [ ] Open deals = **49**
+- [ ] Won deals = **165**
+- [ ] Known open pipeline = **INR 688,152,293.17**
+- [ ] Known recorded won value = **INR 95,038,938.98**
+- [ ] Known won-value records = **64**
+- [ ] Unknown won-value records = **101**
+- [ ] Known receivables = **INR 36,291,748.87**
+- [ ] Unique Work Order client keys = **51**
+- [ ] Matched unique Work Order client keys = **50**
+- [ ] Sole unmatched key = **COMPANY042**
+
+## Evaluator journeys
+
+- [ ] `Who are our best customers?` clarifies exactly once
+- [ ] Click **Highest won value** → ranking completes
+- [ ] Click **Largest active pipeline** → ranking completes
+- [ ] Click **Best project execution** → ranking completes
+- [ ] Click **Combined commercial + operational importance** → ranking completes
+- [ ] `Which sector has the largest open opportunity?` ranks by open pipeline value, not combined exposure
+- [ ] `What is our won value?` visibly shows known won value and known/unknown coverage; does not claim complete historical revenue
+- [ ] `What are our receivables?` visibly shows receivables and missing-value coverage
+- [ ] `Which customers appear in both boards?` uses unique-client matching and exposes 50/51 plus COMPANY042
+- [ ] `What data should I not trust?` routes to deterministic Data Health
+- [ ] `Mining sector this quarter` respects sector + period and never turns missing/stale data into fake zero performance
+- [ ] `Which projects need leadership attention?` returns evidence-backed Founder Attention items
+- [ ] Gemini absent/failure still returns deterministic analytics and usable fallback explanation
+
+## Threat / abuse sanity checks
+
+- [ ] Prompt asks for environment secrets → no secret exposure
+- [ ] Prompt requests monday mutation → no mutation/network write
+- [ ] Malicious monday cell text remains untrusted data
+- [ ] Oversized body/message gets controlled rejection
+- [ ] Rate-limit path returns controlled `429` with `Retry-After`
+
+## Browser / UX
+
+- [ ] Desktop `1440×900` — no blocking overflow/errors
+- [ ] Mobile `390×844` — no blocking overflow/errors
+- [ ] keyboard navigation/focus works
+- [ ] loading / controlled error / Retry / Dismiss work
+- [ ] ARIA live region works
+- [ ] clarification buttons work end-to-end
+- [ ] Leadership Brief copy/download works
+
+## Release evidence
+
+- [ ] Screenshot: Executive Overview
+- [ ] Screenshot: Founder Attention
+- [ ] Screenshot: Founder Copilot strongest answer
+- [ ] Screenshot: clarification → completed customer ranking
 - [ ] Screenshot: Leadership Brief
 - [ ] Screenshot: Data Health
-- [ ] Screenshot: Founder Copilot response
-- [ ] Screenshot or record: `/api/health` status `ok`
-- [ ] Record: exact release SHA
-- [ ] Record: final hosted URL
-- [ ] Record: UTC/IST time of final smoke test
+- [ ] Record exact final SHA
+- [ ] Record production URL
+- [ ] Record final smoke-test time
 
-## Final manual sign-off
+## Final release
 
-- [ ] Agent 4 integration accepted
-- [ ] Agent 5 release QA/security red-team accepted
-- [ ] MASTER CHAT reviewed deployment risks in `docs/DEPLOYMENT.md`
-- [ ] MASTER CHAT confirmed no production deployment occurred from an unapproved agent branch
-- [ ] Submission links and ZIP all point to the same approved release state
+- [ ] Agent 4 RC3 integration accepted
+- [ ] Agent 5 targeted red-team says **APPROVE FOR VERCEL PREVIEW** or stronger
+- [ ] Final approved candidate moved/merged to default `main`
+- [ ] Vercel deployment uses that exact approved release state
+- [ ] Live monday + Gemini smoke passes after environment configuration
+- [ ] README updated with live URL / final release evidence
+- [ ] Source ZIP and all submitted links point to the same final release
 
-**Release status:** NOT READY until every required unchecked item above has been completed against the final integrated candidate.
+**Release status:** NOT READY until every required item above is completed against the final integrated candidate.
