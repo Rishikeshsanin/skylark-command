@@ -1,6 +1,6 @@
 # Deployment Readiness
 
-This document describes release configuration for the approved Skylark Command integration candidate. It is **not** authorization to deploy. Agent 4 does not deploy and does not merge `main`.
+This document describes release configuration for Skylark Command application RC3 (`039cadfda8678ff82e105bf5fea2da72937c18c6`). It is **not** authorization to deploy: final independent Agent 5 approval is still required, and this documentation branch does not merge `main` or deploy.
 
 ## Platform baseline
 
@@ -11,7 +11,7 @@ This document describes release configuration for the approved Skylark Command i
 - Package manager: npm
 - Vercel framework preset: Next.js / auto-detect
 - Repository root: `.`
-- Install: `npm install`
+- Install: `npm ci`
 - Build: `npm run build`
 - Do not configure a static export
 
@@ -22,14 +22,14 @@ Configure these for any final Preview/Production environment:
 | Variable | Required | Purpose | Secret? |
 | --- | --- | --- | --- |
 | `MONDAY_API_TOKEN` | Yes | Authenticates monday.com GraphQL reads | Yes |
-| `MONDAY_DEALS_BOARD_ID` | Yes | Numeric Deals board ID | Server configuration |
-| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes | Numeric Work Orders board ID | Server configuration |
+| `MONDAY_DEALS_BOARD_ID` | Yes | Deals board ID (`5030844099`) | Non-secret server configuration |
+| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes | Work Orders board ID (`5030844103`) | Non-secret server configuration |
 
 The data client requires non-empty values and numeric board IDs. Never expose the token through `NEXT_PUBLIC_` variables or commit a real value.
 
 ## Gemini executive explanation provider
 
-RC2 uses Google Gemini for optional qualitative executive explanation:
+RC3 uses Google Gemini for optional qualitative executive explanation:
 
 ```text
 gemini-2.5-flash-lite
@@ -89,7 +89,7 @@ The server-side monday client:
 From the exact candidate SHA:
 
 ```bash
-npm install
+npm ci
 npm test
 npm run lint
 npm run build
@@ -121,7 +121,7 @@ Environment names and empty/example placeholders are acceptable. Real credential
 
 ## Preview procedure for MASTER CHAT
 
-Only after integration and red-team approval:
+Only after independent approval of the exact application RC3 SHA:
 
 1. Record the exact approved SHA.
 2. Confirm `package-lock.json` is present and matches `package.json`.

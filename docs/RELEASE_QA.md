@@ -1,17 +1,24 @@
 # Skylark Command — Release QA Status
 
-**QA lineage:** Agent 5 Release QA + independent Agent 7 evaluator review  
-**Date:** 2026-08-25  
-**Blocked release:** RC2 `ee027ec57c4b54409f462a1bf14e0a014709f020`  
-**Hotfix branch:** `release/rc3-hotfix`
+- **QA lineage:** Agent 5 Release QA + independent Agent 7 evaluator review
+- **Date:** 2026-08-25
+- **Blocked release:** RC2 `ee027ec57c4b54409f462a1bf14e0a014709f020`
+- **Application RC3 SHA:** `039cadfda8678ff82e105bf5fea2da72937c18c6`
+- **Submission docs branch:** `release/rc3-submission`
 
 ## Current release state
 
 **RC2 BLOCKED by Agent 5.** Agent 7 independently confirmed the remaining evaluator-visible issues around clarification completion, sector ranking semantics, authoritative metric visibility, monetary completeness, and cross-board unique-client semantics.
 
-**RC3 hotfix is pending independent retest.** This document does not claim Agent 5 or Agent 7 approval for RC3. RC3 may be promoted only after the targeted evaluator retest passes.
+**RC3 has reported green candidate evidence but is pending the independent final Agent 5 decision.** This document does not claim Agent 5 or Agent 7 approval for RC3. RC3 may be promoted only after the exact SHA above receives explicit approval.
 
 RC2 remains recoverable at its immutable SHA. RC3 is a narrow evaluator hotfix and must not change the deterministic/AI security architecture.
+
+## Reported RC3 candidate evidence
+
+At application SHA `039cadfda8678ff82e105bf5fea2da72937c18c6`, the reported evidence is: `npm ci` passed with 0 vulnerabilities; 106/106 automated tests passed (29 deterministic tests and 77 Vitest tests across 18 files); evaluator, release-security, RC3 regression, and structured-rendering suites passed; lint and production build passed; desktop/mobile smoke and `/api/health` passed; malformed `{}` chat input returned HTTP 400; and the committed-secret scan passed.
+
+These are candidate results, not an independent final approval statement.
 
 ## Immutable live monday acceptance baseline
 
@@ -109,6 +116,6 @@ Before RC3 can be approved, independent QA must re-run:
 
 ## Release decision
 
-**Current decision: RC3 hotfix pending independent Agent 5 targeted retest.**
+**Current decision: RC3 pending independent Agent 5 final approval.**
 
 Do not label RC3 approved, merge it to `main`, or deploy production based on this document alone.

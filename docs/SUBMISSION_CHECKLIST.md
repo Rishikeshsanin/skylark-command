@@ -1,87 +1,70 @@
-# Skylark Command Submission Checklist
+# Skylark Command — Final Submission Runbook
 
-Use this checklist only against the **final approved integrated release candidate**. Agent 6 prepares the checklist but does not deploy production.
+Use this only **after Agent 5 explicitly approves application RC3 SHA `039cadfda8678ff82e105bf5fea2da72937c18c6`**. Stop if the approved SHA differs or if the submission branch contains non-documentation changes after that SHA.
 
-## Submission assets
+## MASTER CHAT release checklist
 
-- [ ] **Hosted web URL** — final production URL recorded and opens successfully: `____________________________`
-- [x] **Public GitHub URL** — `https://github.com/Rishikeshsanin/skylark-command`
-- [ ] **Source ZIP** — generated from the approved final SHA/branch, not an older agent branch
-- [x] **Decision Log** — `docs/DECISION_LOG.md` exists; re-check it after final integration for completeness
-- [ ] **Final release SHA** — record here: `____________________________`
+1. [ ] Verify Agent 5 approved the exact RC3 SHA `039cadfda8678ff82e105bf5fea2da72937c18c6`.
+2. [ ] Verify the diff from that SHA to `release/rc3-submission` is README/docs/safe release assets only.
+3. [ ] Advance `main` to the approved RC3 plus the reviewed documentation commit; do not merge unrelated branches.
+4. [ ] Import the public GitHub repository into Vercel with repository root `.` and Next.js auto-detection.
+5. [ ] Configure `MONDAY_API_TOKEN`, `MONDAY_DEALS_BOARD_ID`, and `MONDAY_WORK_ORDERS_BOARD_ID`; optionally configure `GEMINI_API_KEY` (`AI_API_KEY` is fallback-compatible).
+6. [ ] Deploy the final `main` SHA and record the immutable deployment URL/ID.
+7. [ ] Confirm `GET /api/health` returns HTTP 200 and `status: "ok"` without exposing secrets.
+8. [ ] Verify the configured-live monday baseline, including known-only monetary coverage and the exact cross-board unmatched key.
+9. [ ] Verify a Gemini explanation when configured; confirm the structured deterministic values remain authoritative.
+10. [ ] Verify deterministic Gemini fallback if practical (for example, a Preview without an AI key); do not disrupt Production secrets solely for this check.
+11. [ ] Run desktop (1440×900) and mobile (390×844) smoke across Overview, Copilot, Pipeline, Operations, Leadership, and Data Health.
+12. [ ] Capture the production screenshots listed in `docs/screenshots/README.md`.
+13. [ ] Replace the README live-demo placeholder and add the reviewed production screenshot gallery.
+14. [ ] Run the final tracked-tree/diff secret scan; ensure no token appears in docs, images, logs, ZIP, or `NEXT_PUBLIC_` variables.
+15. [ ] Record the final submission SHA below and confirm Vercel serves that same source state.
+16. [ ] Generate/verify the GitHub source ZIP from final `main`; confirm it opens and contains the expected README/docs.
+17. [ ] Re-open every submission link, then submit.
 
-## Security / repository hygiene
+## Final live acceptance check
 
-- [ ] **No committed secrets** — final-tree and git-diff secret scan complete
-- [ ] No real monday.com token appears in code, docs, screenshots, logs, Actions output, or submission ZIP
-- [ ] No real optional AI provider key appears in repository/submission artifacts
-- [ ] No server secret uses a `NEXT_PUBLIC_` prefix
-- [ ] monday.com access remains query-only/read-only
-- [ ] Canonical chat backend is only `POST /api/chat`; no competing production `/api/copilot` backend
+| Metric | Expected value |
+| --- | ---: |
+| Deals | 346 total; 49 open; 165 won |
+| Known open pipeline | 688152293.17 INR |
+| Known won value | 95038938.98 INR |
+| Won-value coverage | 64 known-value; 101 unknown-value won deals |
+| Work Orders | 176 |
+| Known receivables | 36291748.87 INR |
+| Cross-board client keys | 51 total; 50 matched; 1 unmatched |
+| Unmatched key | `COMPANY042` |
 
-## Build and CI
+Known open/won values exclude missing monetary records. Known won value is not full historical revenue.
 
-- [ ] `npm install` succeeds on the exact release candidate
-- [ ] `npm test` succeeds
-- [ ] `npm run lint` succeeds
-- [ ] `npm run build` succeeds
-- [ ] Release Gate GitHub Actions workflow is green for the exact release SHA
+## Submission links template
 
-## Production / preview smoke
+```text
+Hosted application:
+[PRODUCTION URL]
 
-- [ ] Required Vercel environment variables configured
-- [ ] `GET /` passes
-- [ ] `GET /pipeline` passes
-- [ ] `GET /operations` passes
-- [ ] `GET /leadership` passes
-- [ ] `GET /data-health` passes
-- [ ] `GET /copilot` passes
-- [ ] `GET /api/health` returns HTTP 200 and `status: "ok"`
-- [ ] Optional safe `POST /api/chat` smoke passes
-- [ ] **Production smoke complete** against final hosted URL
+Public source repository:
+https://github.com/Rishikeshsanin/skylark-command
 
-## Product verification
+Source ZIP:
+https://github.com/Rishikeshsanin/skylark-command/archive/refs/heads/main.zip
 
-- [ ] **Desktop verified** — primary navigation, dashboards, data states, Copilot interaction
-- [ ] **Mobile verified** — no blocking overflow/navigation/input issues
-- [ ] **Chat verified** — loading, success, clarification, controlled error/retry behavior
-- [ ] **monday live data verified** — source metadata/timestamps reflect live monday.com runtime data
-- [ ] **Leadership Brief verified** — renders and matches deterministic data output
-- [ ] **Data Health verified** — quality issues/caveats render and do not falsely imply clean data
-- [ ] Pipeline page verified
-- [ ] Operations page verified
-- [ ] Overview page verified
+Decision Log:
+docs/DECISION_LOG.md
 
-## Evaluator sanity checks
+QA-approved application RC3 SHA:
+039cadfda8678ff82e105bf5fea2da72937c18c6
 
-- [ ] Ask: `What is our current open pipeline?`
-- [ ] Ask: `Show me pipeline by stage.`
-- [ ] Ask: `How healthy are our work orders?`
-- [ ] Ask: `What are our receivables?`
-- [ ] Ask: `Give me a leadership brief.`
-- [ ] Ask: `What data-quality issues should I know about?`
-- [ ] Ask: `Who are our best customers?` and verify a clarification is returned rather than an invented ranking definition
-- [ ] Confirm displayed metrics match deterministic analytics/source truth rather than LLM arithmetic
+Final release SHA:
+[FINAL SHA]
+```
 
-## Release evidence to capture
+## Final record
 
-- [ ] Screenshot: Overview
-- [ ] Screenshot: Pipeline
-- [ ] Screenshot: Operations
-- [ ] Screenshot: Leadership Brief
-- [ ] Screenshot: Data Health
-- [ ] Screenshot: Founder Copilot response
-- [ ] Screenshot or record: `/api/health` status `ok`
-- [ ] Record: exact release SHA
-- [ ] Record: final hosted URL
-- [ ] Record: UTC/IST time of final smoke test
+- Production URL: `[PRODUCTION URL]`
+- Final release SHA: `[FINAL SHA]`
+- Deployment ID / immutable URL: `[DEPLOYMENT ID OR URL]`
+- Final smoke time (IST): `[YYYY-MM-DD HH:MM IST]`
+- Agent 5 approval reference: `[LINK OR RECORDED MESSAGE]`
 
-## Final manual sign-off
-
-- [ ] Agent 4 integration accepted
-- [ ] Agent 5 release QA/security red-team accepted
-- [ ] MASTER CHAT reviewed deployment risks in `docs/DEPLOYMENT.md`
-- [ ] MASTER CHAT confirmed no production deployment occurred from an unapproved agent branch
-- [ ] Submission links and ZIP all point to the same approved release state
-
-**Release status:** NOT READY until every required unchecked item above has been completed against the final integrated candidate.
+**Status:** not ready until every required item is complete against the final hosted source state.

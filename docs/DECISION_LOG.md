@@ -1,61 +1,75 @@
-# Decision Log
+# Skylark Command — Decision Log
 
-## 2026-08-25 — Deterministic BI before LLM
+This log records the decisions that materially affect trust, evaluator behavior, and production readiness. Application RC3 is `039cadfda8678ff82e105bf5fea2da72937c18c6`.
 
-**Decision:** All business arithmetic, filtering, joins, risk flags, and aggregations are implemented in TypeScript. LLMs may interpret or narrate structured results but do not calculate metrics.
+## 1. Deterministic BI before LLM
 
-**Reason:** Founder-facing BI requires repeatable answers and testable calculations.
+**Decision:** TypeScript owns normalization, joins, filters, period selection, arithmetic, rankings, risk flags, and aggregations. The LLM receives only an already-computed analytical result to explain.
 
-## 2026-08-25 — Gemini is explanation-only
+**Reason:** Founder-facing metrics must be repeatable, inspectable, and unit-testable. Model wording or provider availability cannot determine business truth.
 
-**Decision:** Google Gemini (`gemini-2.5-flash-lite`) may generate qualitative executive explanation only. `GEMINI_API_KEY` is preferred and `AI_API_KEY` is backward-compatible fallback. Deterministic `AgentResponse.data` remains authoritative even if Gemini is unavailable or fails.
+## 2. Live monday.com is the runtime source
 
-**Reason:** Provider availability or model wording must never determine business arithmetic.
+**Decision:** The application fetches both monday.com boards at runtime with server-side pagination and `cache: "no-store"`. Excel/CSV assignment data is not embedded in the product.
 
-## 2026-08-25 — Numeric/digit trust boundary
+**Reason:** A live BI product must reflect the configured source rather than a stale snapshot. The documented golden baseline is acceptance evidence, not a hardcoded dataset.
 
-**Decision:** Generated executive prose is schema-validated to exclude numeric characters. Numeric business truth is rendered from deterministic analytics data, never copied from model prose.
+## 3. monday.com remains read-only
 
-**Reason:** This prevents the explanation layer from inventing, rounding, or silently changing founder-facing metrics.
+**Decision:** The shared client exposes query/fetch behavior and rejects GraphQL documents containing mutations.
 
-## 2026-08-25 — Live monday.com as runtime source
+**Reason:** The assignment requires read-only access, and an executive analysis surface should not be able to change operational source records.
 
-**Decision:** Runtime data is fetched from monday.com with pagination through a server-only GraphQL query client. Excel/CSV source files are not embedded in runtime code.
+## 4. Gemini explains; it does not calculate
 
-**Reason:** The product requirement is live monday data, and hardcoded assignment data would become stale.
+**Decision:** Optional `gemini-2.5-flash-lite` output is limited to qualitative executive narration. Deterministic `AgentResponse.data` remains authoritative. `GEMINI_API_KEY` is preferred; `AI_API_KEY` is a backward-compatible fallback.
 
-## 2026-08-25 — Read-only monday boundary
+**Reason:** AI can improve interpretation without becoming a non-deterministic calculator or a dependency for core BI.
 
-**Decision:** The shared monday client rejects any GraphQL document containing a mutation and exposes query/fetch helpers only.
+## 5. Numeric prose has a trust guard
 
-**Reason:** The hiring assignment explicitly requires read-only source access.
+**Decision:** Generated explanation is schema-validated and rejected if it contains numeric characters. Numeric values are rendered from structured deterministic data.
 
-## 2026-08-25 — Nulls remain unknown and monetary totals are known-only
+**Reason:** This prevents model prose from inventing, rounding, or silently changing a pipeline, revenue, receivables, count, date, or percentage.
 
-**Decision:** Missing or malformed numeric/date values normalize to `null`, with quality issues when relevant. Analytics never silently fabricate replacements. Monetary sums such as won value, open pipeline, customer deal values, and receivables sum known values only; UI language and known/unknown counts disclose incompleteness where available.
+## 6. Provider failure has a deterministic fallback
 
-**Reason:** The source is intentionally messy; invented defaults or complete-total language would create false executive confidence.
+**Decision:** Missing provider configuration, timeout, rate limit, network failure, invalid schema, or numeric-guard failure returns a deterministic explanation while preserving the analytical data.
 
-## 2026-08-25 — Cross-board client normalization uses no fuzzy matching
+**Reason:** A provider outage must degrade narration, not the answer or application availability.
 
-**Decision:** Known company-code formats are normalized deterministically (`WOCOMPANY_002 -> COMPANY002`, `COMPANY_002 -> COMPANY002`). Unknown formats are only trimmed/upper-cased, not fuzzily guessed. Cross-board presence uses exact normalized-key intersection and counts unique client keys rather than Work Order rows.
+## 7. Unknown data stays unknown
 
-**Reason:** Most Work Order customers can be joined reliably while avoiding accidental false matches or inflated unmatched counts.
+**Decision:** Missing or malformed numeric/date values normalize to `null`. Monetary totals sum known values only, and available known/unknown coverage counts remain visible. Known won value is not described as complete historical revenue.
 
-## 2026-08-25 — Customer ranking definitions are explicit
+**Reason:** Imputing zero or silently dropping coverage language would create false executive confidence.
 
-**Decision:** “Best customers” is ambiguous and requires one of four exact definitions: highest known won value, largest known active pipeline, best project execution, or combined commercial + operational importance. Clarification selections are controlled exact matches and dispatch only to deterministic ranking functions.
+## 8. “Best customers” requires clarification
 
-**Reason:** The product must not silently invent a ranking objective or fuzzy-select a customer-ranking definition.
+**Decision:** The copilot asks the evaluator to choose highest won value, largest active pipeline, best project execution, or combined commercial + operational importance. Controlled selections map to deterministic ranking functions.
 
-## 2026-08-25 — Current-quarter and latest-period behavior
+**Reason:** “Best” has no single defensible business meaning. The product should ask, not invent an objective.
 
-**Decision:** Supported current-quarter analytics use deterministic Agent 1 period functions. If the requested current period has no usable records, analytics preserve a no-data state and expose the latest available period rather than reporting a fake zero.
+## 9. Cross-board matching is exact after normalization
 
-**Reason:** Zero and unavailable data are materially different executive conclusions.
+**Decision:** Known company-code formats are normalized deterministically (for example, `WOCOMPANY_002` and `COMPANY_002` become `COMPANY002`). Cross-board presence is the intersection of unique exact keys. Unknown formats are trimmed and upper-cased but never fuzzily guessed.
 
-## 2026-08-25 — Explicit time reference
+**Reason:** Exact normalized matching fixes known formatting variance while avoiding false joins and row-count inflation.
 
-**Decision:** Delay/staleness/risk calculations accept `asOfDate` from the caller instead of reading the clock internally.
+## 10. Current-quarter absence is not zero performance
 
-**Reason:** This keeps analytics deterministic and unit-testable.
+**Decision:** A requested current/explicit quarter with no usable records returns a no-data state and latest-available-period context when one exists.
+
+**Reason:** “No records” and “zero business” are materially different conclusions.
+
+## 11. Analysis time is explicit
+
+**Decision:** Time-dependent calculations accept an `asOfDate` rather than reading the system clock inside analytics.
+
+**Reason:** Delay, staleness, and current-quarter behavior remain deterministic and testable.
+
+## 12. Evaluator access versus production identity controls
+
+**Decision:** The hiring preview is evaluator-accessible without introducing last-minute application SSO/RBAC. Secrets remain server-only, monday access remains read-only, and API controls remain active. A production rollout should add organization SSO/RBAC, deployment access policy, and distributed rate limiting.
+
+**Reason:** Adding identity infrastructure immediately before evaluation could block the reviewer and expands the release surface. The accessible preview is a deliberate evaluation trade-off, not a claim of full enterprise access-control readiness.
