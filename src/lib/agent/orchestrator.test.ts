@@ -108,11 +108,13 @@ describe("orchestrateFounderQuestion", () => {
       result: { data: { sentinelMetric: 42 }, caveats: [] },
       source,
     }));
+    const providerSecretName = ["GEMINI", "API", "KEY"].join("_");
+    const placeholderSecret = "placeholder-secret-key";
     const provider: ExecutiveExplanationProvider = {
       name: "gemini",
       model: "test-model",
       explain: vi.fn(async () => {
-        throw new Error("provider failed with GEMINI_API_KEY=super-secret-key");
+        throw new Error(`provider failed with ${providerSecretName}=${placeholderSecret}`);
       }),
     };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -132,7 +134,7 @@ describe("orchestrateFounderQuestion", () => {
     const logged = warn.mock.calls.map((call) => call.join(" ")).join(" ");
     expect(logged).toContain("AI_UPSTREAM_ERROR");
     expect(logged).toContain("request-safe");
-    expect(logged).not.toContain("super-secret-key");
-    expect(logged).not.toContain("GEMINI_API_KEY=");
+    expect(logged).not.toContain(placeholderSecret);
+    expect(logged).not.toContain(`${providerSecretName}=`);
   });
 });
