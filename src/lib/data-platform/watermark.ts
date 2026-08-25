@@ -15,6 +15,13 @@ function canonicalize(value: unknown): unknown {
 
 export function calculateSourceWatermark(snapshot: BusinessDataSnapshot): string {
   const payload = {
+    source: {
+      provider: snapshot.source.provider,
+      dealsBoardId: snapshot.source.dealsBoardId,
+      workOrdersBoardId: snapshot.source.workOrdersBoardId,
+      dealsBoardName: snapshot.source.dealsBoardName,
+      workOrdersBoardName: snapshot.source.workOrdersBoardName,
+    },
     deals: [...snapshot.deals].sort((a, b) => a.mondayItemId.localeCompare(b.mondayItemId)),
     workOrders: [...snapshot.workOrders].sort((a, b) => a.mondayItemId.localeCompare(b.mondayItemId)),
     normalizationIssues: [...snapshot.normalizationIssues].sort((a, b) =>
