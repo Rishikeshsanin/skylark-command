@@ -5,6 +5,7 @@ import { NavLink } from "./nav-link";
 const navigation = [
   { href: "/", label: "Overview", shortLabel: "Overview" },
   { href: "/copilot", label: "Founder Copilot", shortLabel: "Copilot" },
+  { href: "/changes", label: "Change Detective", shortLabel: "Changes" },
   { href: "/pipeline", label: "Pipeline", shortLabel: "Pipeline" },
   { href: "/operations", label: "Operations", shortLabel: "Ops" },
   { href: "/leadership", label: "Leadership Brief", shortLabel: "Brief" },
