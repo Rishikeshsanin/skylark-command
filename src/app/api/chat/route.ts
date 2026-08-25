@@ -59,7 +59,12 @@ export async function POST(request: Request) {
       MAX_REQUEST_BYTES,
     );
 
-    const response = await orchestrateFounderQuestion(body.message);
+    const response = await orchestrateFounderQuestion(
+      body.message,
+      undefined,
+      undefined,
+      requestId,
+    );
 
     logEvent("info", "chat.completed", {
       requestId,

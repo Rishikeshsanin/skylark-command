@@ -249,6 +249,16 @@ export interface ClarificationRequest {
   options?: string[];
 }
 
+/** Model prose is advisory only. Numeric truth always remains in AgentResponse.data. */
+export interface ExecutiveExplanation {
+  headline: string;
+  executiveSummary: string;
+  observations: string[];
+  risks: string[];
+  attentionItems: string[];
+  followUpQuestions: string[];
+}
+
 /**
  * Stable response envelope for Agent 2/3. The LLM may explain deterministic
  * results, but arithmetic belongs in analytics functions and `data` should be
@@ -260,6 +270,7 @@ export interface AgentResponse<T = unknown> {
   data?: T;
   caveats: string[];
   clarification?: ClarificationRequest;
+  explanation?: ExecutiveExplanation;
   source: {
     provider: "monday.com";
     boardIds: string[];

@@ -2,6 +2,7 @@ import type {
   AgentResponse,
   AnalyticsResult,
   ClarificationRequest,
+  ExecutiveExplanation,
 } from "@/types";
 import type { QueryPlan } from "./schemas";
 
@@ -56,12 +57,16 @@ export function composeAnalyticsResponse<T>(
   plan: QueryPlan,
   result: AnalyticsResult<T>,
   source: AgentResponse["source"],
+  explanation?: ExecutiveExplanation,
 ): AgentResponse<T> {
   return {
     ok: true,
-    answer: `Deterministic ${INTENT_LABELS[plan.intent]} analytics completed.`,
+    answer:
+      explanation?.executiveSummary ??
+      `Deterministic ${INTENT_LABELS[plan.intent]} analytics completed.`,
     data: result.data,
     caveats: result.caveats,
+    explanation,
     source,
   };
 }
