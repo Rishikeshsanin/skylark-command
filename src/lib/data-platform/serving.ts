@@ -3,6 +3,7 @@ import "server-only";
 import { loadLiveBusinessData, type BusinessDataSnapshot } from "@/lib/business-data";
 import type { DataServingMode, TemporalSnapshotStore } from "./contracts";
 import { createPostgresTemporalSnapshotStore } from "./postgres";
+import { loadBusinessDataFromTemporalStore } from "./serving-core";
 
 const DEFAULT_WORKSPACE_KEY = "skylark-command";
 const DEFAULT_STALE_AFTER_MINUTES = 60;
@@ -29,48 +30,18 @@ function staleAfterMsFromEnvironment(): number {
   return minutes * 60 * 1000;
 }
 
-export async function loadBusinessDataForAnalytics(options: ServingOptions = {}): Promise<BusinessDataSnapshot> {
+export function loadBusinessDataForAnalytics(options: ServingOptions = {}): Promise<BusinessDataSnapshot> {
   const mode = options.mode ?? resolveDataServingMode();
   const liveLoader = options.liveLoader ?? (() => loadLiveBusinessData());
 
   if (mode === "live") return liveLoader();
 
-  const workspaceKey = options.workspaceKey ?? process.env.SKYLARK_WORKSPACE_KEY?.trim() ?? DEFAULT_WORKSPACE_KEY;
-  const now = options.now ?? new Date();
-  const staleAfterMs = options.staleAfterMs ?? staleAfterMsFromEnvironment();
-
-  try {
-    const store = options.store ?? createPostgresTemporalSnapshotStore();
-    const stored = await store.loadLatestSuccessfulSnapshot(workspaceKey);
-
-    if (stored) {
-      const freshness = await store.getFreshness({
-        workspaceKey,
-        now: now.toISOString(),
-        staleAfterMs,
-      });
-      return {
-        deals: stored.deals,
-        workOrders: stored.workOrders,
-        normalizationIssues: stored.normalizationIssues,
-        source: {
-          ...stored.source,
-          dataMode: "temporal",
-          freshnessState: freshness.state,
-          lastSyncStartedAt: freshness.lastSyncStartedAt,
-          lastSyncSucceededAt: freshness.lastSyncSucceededAt,
-          sourceWatermark: freshness.sourceWatermark ?? stored.temporal.sourceWatermark,
-          servedSnapshotAt: freshness.servedSnapshotAt ?? stored.temporal.snapshotTime,
-        },
-      };
-    }
-  } catch (error) {
-    if (mode === "temporal_only") throw error;
-  }
-
-  if (mode === "temporal_only") {
-    throw new Error("No successful temporal snapshot is available for analytics.");
-  }
-
-  return liveLoader();
+  return loadBusinessDataFromTemporalStore({
+    mode,
+    store: options.store ?? createPostgresTemporalSnapshotStore(),
+    liveLoader,
+    workspaceKey: options.workspaceKey ?? process.env.SKYLARK_WORKSPACE_KEY?.trim() ?? DEFAULT_WORKSPACE_KEY,
+    now: options.now ?? new Date(),
+    staleAfterMs: options.staleAfterMs ?? staleAfterMsFromEnvironment(),
+  });
 }
