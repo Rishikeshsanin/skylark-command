@@ -5,6 +5,7 @@ import {
   buildClientIntelligence,
   calculateSectorMetrics,
   clientsWithOpenDealsAndActiveWorkOrders,
+  summarizeCrossBoardClients,
 } from "../src/lib/analytics/index";
 import { makeDeal, makeWorkOrder } from "./fixtures";
 
@@ -32,6 +33,26 @@ test("returns only clients with both open deals and active Work Orders", () => {
   ];
   const result = clientsWithOpenDealsAndActiveWorkOrders(deals, workOrders, "2026-08-25");
   assert.deepEqual(result.map((client) => client.normalizedClientKey), ["COMPANY001"]);
+});
+
+test("cross-board presence counts unique normalized Work Order client keys", () => {
+  const deals = [
+    makeDeal({ mondayItemId: "d1", normalizedClientKey: "COMPANY001" }),
+    makeDeal({ mondayItemId: "d2", normalizedClientKey: "COMPANY002" }),
+  ];
+  const workOrders = [
+    makeWorkOrder({ mondayItemId: "w1", normalizedClientKey: "COMPANY001" }),
+    makeWorkOrder({ mondayItemId: "w2", normalizedClientKey: "COMPANY001" }),
+    makeWorkOrder({ mondayItemId: "w3", normalizedClientKey: "COMPANY042" }),
+    makeWorkOrder({ mondayItemId: "w4", normalizedClientKey: "COMPANY042" }),
+  ];
+
+  const summary = summarizeCrossBoardClients(deals, workOrders, "2026-08-25");
+  assert.equal(summary.totalUniqueWorkOrderClientKeys, 2);
+  assert.equal(summary.matchedUniqueWorkOrderClientKeys, 1);
+  assert.equal(summary.unmatchedUniqueWorkOrderClientKeys, 1);
+  assert.deepEqual(summary.unmatchedWorkOrderClientKeys, ["COMPANY042"]);
+  assert.deepEqual(summary.matchedClients.map((client) => client.normalizedClientKey), ["COMPANY001"]);
 });
 
 test("sector metrics combine commercial and operational exposure", () => {
