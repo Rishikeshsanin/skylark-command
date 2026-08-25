@@ -40,12 +40,20 @@ export function buildDataQualityReport(
   asOfDate?: string,
 ): DataQualityReport {
   const issues = [...normalizationIssues];
-  const dealKeys = new Set(deals.map((deal) => deal.normalizedClientKey).filter((value): value is string => Boolean(value)));
-  const unmappedWorkOrderIds = new Set<string>();
+  const dealKeys = new Set(
+    deals
+      .filter((deal) => !deal.malformed && deal.normalizedClientKey)
+      .map((deal) => deal.normalizedClientKey as string),
+  );
+  const unmappedWorkOrderClientKeys = new Set<string>();
 
   for (const workOrder of workOrders) {
-    if (workOrder.normalizedClientKey && !dealKeys.has(workOrder.normalizedClientKey)) {
-      unmappedWorkOrderIds.add(workOrder.mondayItemId);
+    if (
+      !workOrder.malformed &&
+      workOrder.normalizedClientKey &&
+      !dealKeys.has(workOrder.normalizedClientKey)
+    ) {
+      unmappedWorkOrderClientKeys.add(workOrder.normalizedClientKey);
       issues.push({
         code: "unmapped_client",
         severity: "warning",
@@ -124,13 +132,15 @@ export function buildDataQualityReport(
     },
     { info: 0, warning: 0, error: 0 },
   );
+  const sortedUnmappedKeys = [...unmappedWorkOrderClientKeys].sort();
 
   return {
     totalDeals: deals.length,
     totalWorkOrders: workOrders.length,
     malformedDeals: deals.filter((deal) => deal.malformed).length,
     malformedWorkOrders: workOrders.filter((workOrder) => workOrder.malformed).length,
-    unmappedWorkOrderClients: unmappedWorkOrderIds.size,
+    unmappedWorkOrderClients: sortedUnmappedKeys.length,
+    unmappedWorkOrderClientKeys: sortedUnmappedKeys,
     issueCounts,
     issues,
   };
