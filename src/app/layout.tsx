@@ -1,20 +1,7 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import "./globals.css";
+import { AppShell } from "@/components/shell/app-shell";
 
-export const metadata: Metadata = {
-  title: "Skylark Command",
-  description:
-    "AI-powered business intelligence copilot for live monday.com sales and operations data.",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
-  );
-}
+export const metadata: Metadata = { title: { default: "Skylark Command", template: "%s · Skylark Command" }, description: "Founder intelligence and business operations copilot for live monday.com data." };
+export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) { return <html lang="en"><body><AppShell>{children}</AppShell></body></html>; }
