@@ -43,6 +43,8 @@ export const queryFocusSchema = z.enum([
   "billing",
   "receivables",
   "commercial_operational",
+  "cross_board_presence",
+  "sector_open_pipeline",
   "customer_won_value",
   "customer_pipeline",
   "customer_execution",
