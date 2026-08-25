@@ -23,6 +23,10 @@ export async function orchestrateFounderQuestion(
     throw new Error("Planner returned neither a plan nor a clarification");
   }
 
-  const result = await dispatcher(decision.plan);
-  return composeAnalyticsResponse(decision.plan, result);
+  const execution = await dispatcher(decision.plan);
+  return composeAnalyticsResponse(
+    decision.plan,
+    execution.result,
+    execution.source,
+  );
 }

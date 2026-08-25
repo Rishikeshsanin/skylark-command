@@ -3,7 +3,6 @@ import {
   chatRequestSchema,
   MAX_REQUEST_BYTES,
 } from "@/lib/agent/schemas";
-import { PublicApiError } from "./errors";
 import { parseJsonRequest } from "./http";
 
 function request(body: unknown, contentType = "application/json") {
@@ -32,7 +31,7 @@ describe("parseJsonRequest", () => {
         chatRequestSchema,
         MAX_REQUEST_BYTES,
       ),
-    ).rejects.toMatchObject<Partial<PublicApiError>>({
+    ).rejects.toMatchObject({
       status: 415,
       code: "UNSUPPORTED_MEDIA_TYPE",
     });
@@ -45,7 +44,7 @@ describe("parseJsonRequest", () => {
         chatRequestSchema,
         MAX_REQUEST_BYTES,
       ),
-    ).rejects.toMatchObject<Partial<PublicApiError>>({
+    ).rejects.toMatchObject({
       status: 400,
       code: "INVALID_JSON",
     });
@@ -58,7 +57,7 @@ describe("parseJsonRequest", () => {
         chatRequestSchema,
         MAX_REQUEST_BYTES,
       ),
-    ).rejects.toMatchObject<Partial<PublicApiError>>({
+    ).rejects.toMatchObject({
       status: 413,
       code: "MESSAGE_TOO_LONG",
     });
@@ -71,7 +70,7 @@ describe("parseJsonRequest", () => {
         chatRequestSchema,
         MAX_REQUEST_BYTES,
       ),
-    ).rejects.toMatchObject<Partial<PublicApiError>>({
+    ).rejects.toMatchObject({
       status: 400,
       code: "INVALID_REQUEST",
     });

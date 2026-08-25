@@ -1,8 +1,8 @@
 # Agent 3 — AI Orchestration, API Reliability & Security Design
 
-Status: **Canonical shared contracts merged. Agent 3 infrastructure is implemented; deterministic analytics dispatch remains intentionally unwired until Agent 1 exports analytics functions.**
+Status: **Canonical shared contracts and Agent 1 deterministic analytics exports are merged. Agent 3 infrastructure and thin analytics dispatch are implemented.**
 
-This layer consumes Agent 1's canonical types from `src/types` and does not redefine Deal, WorkOrder, AnalyticsResult, ClarificationRequest, or AgentResponse.
+This layer consumes Agent 1's canonical types from `src/types`, live loader from `src/lib/business-data`, and deterministic analytics from `src/lib/analytics`. It does not redefine Deal, WorkOrder, AnalyticsResult, ClarificationRequest, AgentResponse, normalization, or business arithmetic.
 
 ## Execution flow
 
@@ -11,12 +11,13 @@ Founder question
   -> content-type/body-size validation
   -> per-client rate limit
   -> bounded structured query planner
-  -> canonical deterministic analytics adapter (Agent 1 export; pending)
+  -> live monday loader (Agent 1)
+  -> canonical deterministic analytics (Agent 1)
   -> canonical AgentResponse composition
   -> optional explanation provider later
 ```
 
-The LLM is never the source of truth for business arithmetic. All totals, counts, stage/sector breakdowns, date filtering, revenue, receivables and cross-board metrics must come from Agent 1 deterministic analytics.
+The LLM is never the source of truth for business arithmetic. All totals, counts, stage/sector breakdowns, revenue, receivables, work-order health, client intelligence and leadership-brief facts come from Agent 1 deterministic analytics.
 
 ## Implemented Agent 3 boundaries
 
@@ -26,31 +27,32 @@ The LLM is never the source of truth for business arithmetic. All totals, counts
 - bounded deterministic query planner with structured clarification
 - strict parser for future model-produced query plans
 - canonical `ClarificationRequest` orchestration
-- canonical `AgentResponse` composition
+- canonical `AgentResponse` composition using actual live source `fetchedAt` metadata
+- thin intent dispatcher over Agent 1 exports
 - in-memory per-client chat rate limiting (20 requests/minute/instance)
 - request IDs returned via `x-request-id`
-- controlled public errors with no stack traces
+- controlled public errors with monday-specific safe mappings and no stack traces
 - structured logging with secret-key redaction and no question/body logging
-- abort-based external-call timeout helper
+- abort-based external-call timeout helper for future AI provider calls
 - explicit untrusted-business-data prompt delimiters and system/data separation
 - production-safe health endpoint exposing configuration booleans only
 - global security headers and disabled `X-Powered-By`
 
 ## Prompt-injection boundary
 
-monday.com cells and record text are untrusted data, never instructions. Raw monday GraphQL is not exposed to the model. The explanation helper accepts only already-normalized/deterministic result objects, serializes them into a bounded untrusted-data block, escapes delimiter collisions, and uses a fixed system instruction that prohibits recalculation or following instructions contained in data.
+monday.com cells and record text are untrusted data, never instructions. Raw monday GraphQL is not exposed to the model. The explanation helper accepts only normalized/deterministic result objects, serializes them into a bounded untrusted-data block, escapes delimiter collisions, and uses a fixed system instruction that prohibits recalculation or following instructions contained in data.
 
 ## Clarification behavior
 
 Ambiguous ranking requests such as `Who are our best customers?` return the canonical clarification contract with options such as won value, active pipeline, project execution, or combined commercial/operational importance. No ranking definition is invented.
 
-Unknown intent also returns a concise clarification rather than handing arbitrary prose to unrestricted tools.
+If a selected ranking definition is not yet exported by deterministic analytics, the adapter fails closed with `CUSTOMER_RANKING_NOT_WIRED` rather than calculating a ranking in Agent 3.
 
-## Reliability behavior
+## Data freshness and time scopes
 
-The chat route uses canonical responses even when analytics are not yet wired. Known analytics intents currently fail closed with `ANALYTICS_NOT_WIRED` (HTTP 503) rather than fabricating a result. Clarification-only requests can complete without touching analytics.
+Quarter analysis uses Agent 1's `dealCloseQuarterMetrics`. A requested current/explicit quarter with no records returns an empty deterministic result plus a caveat naming the latest available quarter when one exists.
 
-External providers should be called through the abort-based timeout helper. Provider 429/5xx handling will be added at the concrete provider adapter once a provider is selected; deterministic analytics must remain usable without an explanation provider.
+Other time-scoped combinations such as sector performance for the current quarter are rejected with `PERIOD_SCOPE_NOT_WIRED` until Agent 1 exposes a canonical scoped metric. Agent 3 does not filter/recalculate those metrics independently.
 
 ## Health endpoint
 
@@ -60,6 +62,6 @@ External providers should be called through the abort-based timeout helper. Prov
 
 The current limiter is intentionally dependency-light for the hiring prototype. It is process-local, so limits are best-effort across horizontally scaled/serverless instances. The helper is isolated so a distributed backend can replace it without changing route semantics.
 
-## Remaining Agent 1 contract request
+## Remaining integration limitation
 
-Agent 3 still needs only the exported deterministic analytics function surface (and any accompanying canonical filter/date semantics) to wire `src/lib/agent/analytics-adapter.ts`. No analytics implementation will be duplicated in Agent 3.
+A concrete external AI explanation provider is intentionally not configured yet. The current API returns canonical deterministic data with a safe generic completion message. When a provider is selected, it should receive only bounded deterministic results through `untrusted-data.ts`, use the timeout helper, validate output, and fall back to the deterministic response on provider failure.

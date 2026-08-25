@@ -12,7 +12,9 @@ function configuredBoardIds(): string[] {
   ].filter((value): value is string => Boolean(value));
 }
 
-export function sourceMetadata(fetchedAt = new Date().toISOString()): AgentResponse["source"] {
+export function sourceMetadata(
+  fetchedAt = new Date().toISOString(),
+): AgentResponse["source"] {
   return {
     provider: "monday.com",
     boardIds: configuredBoardIds(),
@@ -26,7 +28,9 @@ export function buildClarificationResponse(
   return {
     ok: true,
     answer: clarification.question,
-    caveats: ["No business analytics were executed because clarification is required."],
+    caveats: [
+      "No business analytics were executed because clarification is required.",
+    ],
     clarification,
     source: sourceMetadata(),
   };
@@ -51,13 +55,14 @@ const INTENT_LABELS: Record<QueryPlan["intent"], string> = {
 export function composeAnalyticsResponse<T>(
   plan: QueryPlan,
   result: AnalyticsResult<T>,
+  source: AgentResponse["source"],
 ): AgentResponse<T> {
   return {
     ok: true,
     answer: `Deterministic ${INTENT_LABELS[plan.intent]} analytics completed.`,
     data: result.data,
     caveats: result.caveats,
-    source: sourceMetadata(),
+    source,
   };
 }
 
