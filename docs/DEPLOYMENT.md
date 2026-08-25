@@ -1,129 +1,92 @@
 # Deployment Readiness
 
-This document prepares Skylark Command for a fast Vercel release after integration and release QA are green. It is **not** authorization to deploy production from `agent-6-release-ops`.
+This document describes release configuration for the approved Skylark Command integration candidate. It is **not** authorization to deploy. Agent 4 does not deploy and does not merge `main`.
 
-## Release ownership
+## Platform baseline
 
-Before deployment, MASTER CHAT must confirm that the integrated release candidate contains the accepted work from the data/BI, product UI, backend/security, integration, QA, and release-ops branches. Production deployment should happen only from the approved integrated branch/commit.
-
-## Current platform baseline
-
-- Framework: Next.js 16 App Router
-- Language: TypeScript
-- Runtime used by `/api/chat`: Node.js
-- Minimum local Node.js version: 20.9+
-- Package manager commands: npm
+- Next.js 16 App Router
+- TypeScript
+- `/api/chat` runtime: Node.js
+- Minimum Node.js: 20.9+
+- Package manager: npm
 - Vercel framework preset: Next.js / auto-detect
-- Repository root directory: repository root (`.`)
-- Install command: `npm install`
-- Build command: `npm run build`
-- Output directory: use the Next.js/Vercel default; do not configure a static export
+- Repository root: `.`
+- Install: `npm install`
+- Build: `npm run build`
+- Do not configure a static export
 
-No `vercel.json` is required by the current codebase.
+## Required server environment variables
 
-## Required production environment variables
-
-Configure these as **server-side Vercel environment variables** for the final Preview and Production environments:
+Configure these for any final Preview/Production environment:
 
 | Variable | Required | Purpose | Secret? |
 | --- | --- | --- | --- |
-| `MONDAY_API_TOKEN` | Yes | Authenticates read-only monday.com GraphQL requests | Yes |
-| `MONDAY_DEALS_BOARD_ID` | Yes | Numeric Deals board ID | Treat as server configuration |
-| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes | Numeric Work Orders board ID | Treat as server configuration |
+| `MONDAY_API_TOKEN` | Yes | Authenticates monday.com GraphQL reads | Yes |
+| `MONDAY_DEALS_BOARD_ID` | Yes | Numeric Deals board ID | Server configuration |
+| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes | Numeric Work Orders board ID | Server configuration |
 
-Requirements enforced by the data client:
+The data client requires non-empty values and numeric board IDs. Never expose the token through `NEXT_PUBLIC_` variables or commit a real value.
 
-- all three values must be non-empty;
-- both board IDs must contain only digits;
-- the monday token must never be exposed through a `NEXT_PUBLIC_` variable;
-- no real values belong in `.env.example`, documentation, CI, or git history.
+## Gemini executive explanation provider
 
-## Optional AI provider variables
+RC2 uses Google Gemini for optional qualitative executive explanation:
 
-The current Agent 3 baseline recognizes:
+```text
+gemini-2.5-flash-lite
+```
+
+Key precedence is:
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `AI_API_KEY` | No | Optional/reserved external AI provider key used by the Agent 3 provider contract when enabled |
+| `GEMINI_API_KEY` | No | Preferred Gemini server API key |
+| `AI_API_KEY` | No | Backward-compatible fallback when `GEMINI_API_KEY` is unset |
 
-Do not invent or configure a provider key unless the final integrated Agent 3 code actually consumes it. If the final backend introduces provider-specific variables (for example provider name, model, endpoint, or API key), MASTER CHAT must add those exact variables to this document and `.env.example` before production release.
+If both are configured, `GEMINI_API_KEY` wins. Both are server-only secrets and must never use a `NEXT_PUBLIC_` prefix.
 
-All AI provider credentials must remain server-only.
+Gemini is not the source of business arithmetic. The planner/dispatcher runs deterministic analytics first. If Gemini is unavailable, times out, is rate-limited, or returns invalid output, the request retains authoritative deterministic `response.data` and uses the deterministic explanation fallback.
 
-## Server-only secret audit
-
-The monday client imports `server-only`, reads credentials from `process.env`, and sends the token only in the server-side `Authorization` header to `https://api.monday.com/v2`.
-
-Release check:
-
-1. Search the final tree for `MONDAY_API_TOKEN`, `AI_API_KEY`, `NEXT_PUBLIC_`, and obvious token formats.
-2. Confirm secrets appear only as variable names/placeholders, never real values.
-3. Confirm client components do not read server credentials.
-4. Confirm Vercel Preview and Production scopes contain the required monday variables.
-
-## Runtime routes
+## Canonical API routes
 
 ### `GET /api/health`
 
-- Dynamic route (`force-dynamic`).
-- Returns HTTP 200 with service/configuration metadata.
-- `status` is `ok` when all three monday variables are configured and `degraded` when core configuration is incomplete.
-- Reports whether an optional AI provider variable is configured.
-- This endpoint checks configuration presence only; it does **not** call monday.com.
-
-A production candidate should not be signed off while `/api/health` reports `degraded`.
+Returns service/configuration metadata. It checks configuration presence; it does not perform a live monday.com dependency probe.
 
 ### `POST /api/chat`
 
-- Dynamic route (`force-dynamic`).
-- Explicit runtime: `nodejs`.
-- Canonical Founder Copilot backend; do not add a competing `/api/copilot` backend.
-- Accepts strict JSON shaped as `{ "message": "..." }`.
-- Current limits: 2,000 message characters and 8,192 request bytes.
-- Applies request IDs, safe public errors, and rate-limit headers.
+This is the **only** Founder Copilot backend. Do not add `/api/copilot`.
 
-## monday.com request behavior
+Request shape:
 
-The current read-only client:
+```json
+{"message":"How is our pipeline looking?"}
+```
 
-- sends only GraphQL queries and explicitly rejects mutation text;
-- disables fetch caching with `cache: "no-store"`;
-- uses a 12,000 ms timeout per GraphQL attempt;
-- allows 2 retries after the initial attempt for retryable failures;
-- backs off between retries;
-- paginates board items in pages of 100 by default;
-- fetches Deals and Work Orders boards concurrently.
+The route applies:
 
-### Function-duration risk
+- strict JSON/schema validation;
+- message/request size limits;
+- request IDs;
+- rate limiting;
+- safe public errors;
+- canonical planner/dispatcher;
+- deterministic analytics before optional Gemini explanation.
 
-A single page can consume up to roughly three 12-second attempts plus retry backoff in a worst-case upstream failure. A board with several pages performs those pages sequentially. Therefore, slow or rate-limited monday.com responses can push a request toward the hosting platform's function-duration limit even though normal requests should be much faster.
+## monday.com behavior
 
-Before production release:
+The server-side monday client:
 
-- run realistic `/api/chat` and dashboard requests against the Preview deployment with live monday.com configuration;
-- inspect Vercel function durations/logs;
-- confirm the current Vercel plan/runtime duration limit comfortably covers observed p95/p99 behavior;
-- if timeouts occur, fix the data-access/runtime design in the owning engineering branch instead of merely hiding failures in release tooling.
+- imports `server-only`;
+- sends GraphQL queries only and rejects mutation text;
+- uses `cache: "no-store"`;
+- paginates board items;
+- uses bounded request timeout/retry behavior;
+- fetches Deals and Work Orders server-side;
+- does not embed assignment/business datasets in application code.
 
-Do not assume a particular Vercel duration limit in code or documentation because limits vary with platform configuration/plan.
+## Required release gate
 
-## Vercel compatibility audit
-
-The current backend baseline is compatible with Vercel's Next.js deployment model:
-
-- App Router route handlers are used for API endpoints;
-- `/api/chat` explicitly requests the Node.js runtime rather than Edge;
-- no local filesystem persistence is required;
-- secrets are read from runtime environment variables;
-- external monday.com access is performed with standard `fetch`;
-- security headers are declared through `next.config.ts`;
-- the application is not configured for static export.
-
-The final integrated candidate must still pass `npm run build` because Agent 2 UI changes can alter render/static-dynamic behavior.
-
-## Pre-deployment release gate
-
-From the exact candidate commit:
+From the exact candidate SHA:
 
 ```bash
 npm install
@@ -132,56 +95,68 @@ npm run lint
 npm run build
 ```
 
-All four must exit successfully.
+All must succeed. `npm test` must include the Agent 5 evaluator and release-security regression suites; do not skip them.
 
-Then create a **Preview** deployment (not Production), configure the required Preview environment variables, and run:
+The final candidate must also pass:
+
+- tracked-repository secret scan;
+- desktop smoke at 1440×900;
+- mobile smoke at 390×844;
+- route checks for `/`, `/copilot`, `/pipeline`, `/operations`, `/leadership`, `/data-health`, `/api/health`;
+- `/api/chat` validation;
+- red-team retest.
+
+## Secret audit
+
+Search the tracked release tree for real values associated with:
+
+- `MONDAY_API_TOKEN`
+- `GEMINI_API_KEY`
+- `AI_API_KEY`
+- Bearer credentials
+- passwords / hardcoded secrets
+- `NEXT_PUBLIC_` references to server secrets
+
+Environment names and empty/example placeholders are acceptable. Real credentials are not.
+
+## Preview procedure for MASTER CHAT
+
+Only after integration and red-team approval:
+
+1. Record the exact approved SHA.
+2. Confirm `package-lock.json` is present and matches `package.json`.
+3. Run install/test/lint/build on that SHA.
+4. Configure the three required monday variables in Preview.
+5. Configure `GEMINI_API_KEY` only if Gemini explanation is desired; `AI_API_KEY` remains fallback-compatible.
+6. Create a Preview deployment.
+7. Run:
 
 ```bash
 BASE_URL="https://<preview-host>" npm run smoke
 ```
 
-To exercise the canonical chat route as well:
+8. Optionally validate safe chat behavior with:
 
 ```bash
 BASE_URL="https://<preview-host>" SMOKE_CHAT=1 npm run smoke
 ```
 
-The smoke script verifies:
-
-- `GET /`
-- `GET /pipeline`
-- `GET /operations`
-- `GET /leadership`
-- `GET /data-health`
-- `GET /copilot`
-- `GET /api/health`
-- optional `POST /api/chat`
-
-By default it requires `/api/health` to report `status: "ok"`. `ALLOW_DEGRADED_HEALTH=1` exists only for non-release troubleshooting and must not be used for production sign-off.
-
-## Vercel release procedure for MASTER CHAT
-
-1. Confirm Agent 4's integrated commit is approved by Agent 5 QA.
-2. Merge/cherry-pick the release-ops files into the approved integration branch without replacing working Agent workflows.
-3. Run the local/CI release gate: install, test, lint, build.
-4. Import/link the repository in Vercel if not already linked.
-5. Select the approved integration branch for a Preview deployment.
-6. Add the three required monday variables to the Preview environment; add AI provider variables only if the final code requires them.
-7. Deploy Preview.
-8. Run `npm run smoke` against the Preview URL.
-9. Run the chat smoke and manually verify desktop/mobile views, Leadership Brief, Data Health, and live monday metadata.
-10. Inspect Vercel logs/functions for errors, timeouts, secret leakage, and unexpected retries.
+9. Verify desktop/mobile views, structured Copilot output, Leadership Brief, Founder Attention, Data Health, and source provenance.
+10. Inspect runtime logs for timeouts, safe fallback behavior, and accidental secret exposure.
 11. Complete `docs/SUBMISSION_CHECKLIST.md`.
-12. Only then promote/deploy the approved commit to Production.
-13. Run the same smoke checks against the production URL and record the final hosted URL.
+12. Only then decide whether to promote/deploy production.
+
+## Function-duration risk
+
+monday.com pagination and retry behavior can increase server execution time under upstream latency or rate limiting. Before production approval, measure realistic Preview function durations with live monday configuration and confirm the selected hosting plan comfortably covers observed behavior. Do not hide upstream timeout problems in release tooling.
 
 ## Rollback readiness
 
 Before production promotion, record:
 
 - approved git SHA;
-- Preview URL used for validation;
+- validated Preview URL;
 - production deployment ID/URL once created;
 - previous known-good production deployment if one exists.
 
-If production smoke fails, roll back to the previous known-good deployment or stop the submission release until the integration owner fixes the issue. Do not patch analytics/AI behavior directly from release operations.
+If production smoke fails, roll back or halt release. Fix application behavior in the owning engineering branch rather than bypassing analytics/security gates.
