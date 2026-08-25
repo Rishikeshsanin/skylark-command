@@ -5,6 +5,7 @@ import type { AgentResponse } from "@/types/domain";
 import {
   AssistantResponse,
   clarificationOptionsFor,
+  followUpQuestionsFor,
 } from "./founder-copilot";
 import {
   buildVisualAnalytics,
@@ -242,7 +243,7 @@ describe("Copilot visual analytics", () => {
     expect(sections[0].chart).toBeUndefined();
   });
 
-  it("keeps canonical clarification choices and follow-up questions actionable", () => {
+  it("keeps canonical clarification choices and only actionable self-contained follow-ups", () => {
     const clarification = agentResponse({
       answer: "What should best customers mean?",
       clarification: {
@@ -270,9 +271,17 @@ describe("Copilot visual analytics", () => {
         observations: [],
         risks: [],
         attentionItems: [],
-        followUpQuestions: ["Show the stage distribution", "Which clients need attention?"],
+        followUpQuestions: [
+          "Would you like a narrower supported business view?",
+          "Show pipeline by stage",
+          "Which clients appear in both boards?",
+        ],
       },
     });
+    expect(followUpQuestionsFor(followUp)).toEqual([
+      "Show pipeline by stage",
+      "Which clients appear in both boards?",
+    ]);
     const followUpMarkup = renderToStaticMarkup(
       createElement(AssistantResponse, {
         response: followUp,
@@ -280,7 +289,8 @@ describe("Copilot visual analytics", () => {
       }),
     );
     expect(followUpMarkup).toContain("Follow-up questions");
-    expect(followUpMarkup).toContain(">Show the stage distribution</button>");
-    expect(followUpMarkup).toContain(">Which clients need attention?</button>");
+    expect(followUpMarkup).toContain(">Show pipeline by stage</button>");
+    expect(followUpMarkup).toContain(">Which clients appear in both boards?</button>");
+    expect(followUpMarkup).not.toContain("Would you like");
   });
 });

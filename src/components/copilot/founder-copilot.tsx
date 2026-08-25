@@ -20,9 +20,12 @@ import {
   buildVisualAnalytics,
   CopilotVisualAnalytics,
 } from "@/components/copilot/visual-analytics";
+import { planFounderQuestion } from "@/lib/agent/planner";
 
 const CHAT_ENDPOINT = "/api/chat";
 const MAX_MESSAGE_CHARS = 2_000;
+const META_FOLLOW_UP_PATTERN =
+  /^(?:(?:would|do)\s+you\s+(?:like|want|need)\b|(?:shall|should|could|may|can)\s+i\b|want\s+me\s+to\b)/i;
 
 const suggestions = [
   "How is our pipeline looking?",
@@ -173,7 +176,7 @@ export function presentationFor(response: AgentResponse): Presentation {
     observations: [...new Set(observations)],
     risks: [...new Set(risks)],
     attentionItems: explanation?.attentionItems ?? [],
-    followUpQuestions: explanation?.followUpQuestions ?? [],
+    followUpQuestions: followUpQuestionsFor(response),
     caveats: [...new Set([...(response.caveats ?? []), ...dataQualityCaveats])],
     metrics: metricHighlights(dataRecord),
     structuredLines: structuredDataLines(response.data, currencyCode),
@@ -188,6 +191,18 @@ export function clarificationOptionsFor(response: AgentResponse): string[] {
   return Array.isArray(options)
     ? options.filter((option) => typeof option === "string" && option.trim().length > 0)
     : [];
+}
+
+export function followUpQuestionsFor(response: AgentResponse): string[] {
+  const questions = response.explanation?.followUpQuestions;
+  if (!Array.isArray(questions)) return [];
+
+  return [...new Set(questions.flatMap((question) => {
+    if (typeof question !== "string") return [];
+    const trimmed = question.trim();
+    if (!trimmed || META_FOLLOW_UP_PATTERN.test(trimmed)) return [];
+    return planFounderQuestion(trimmed).plan ? [trimmed] : [];
+  }))].slice(0, 4);
 }
 
 function formatMetricValue(label: string, value: string | number, currencyCode?: string) {
