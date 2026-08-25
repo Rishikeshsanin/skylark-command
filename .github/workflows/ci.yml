@@ -1,0 +1,23 @@
+name: CI
+on:
+  push:
+    branches: [main, build/company-mvp]
+  pull_request:
+    branches: [main]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run build
+        env:
+          MONDAY_API_TOKEN: ci-placeholder
+          MONDAY_DEALS_BOARD_ID: '5030844099'
+          MONDAY_WORK_ORDERS_BOARD_ID: '5030844103'
