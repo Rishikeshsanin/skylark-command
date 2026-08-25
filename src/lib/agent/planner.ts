@@ -6,12 +6,25 @@ export interface PlannerDecision {
   clarification?: ClarificationRequest;
 }
 
+const CUSTOMER_CLARIFICATION_QUESTION =
+  "What should ‘best customers’ mean for this analysis?";
+
 const CUSTOMER_CLARIFICATION_OPTIONS = [
   "Highest won value",
   "Largest active pipeline",
   "Best project execution",
   "Combined commercial + operational importance",
-];
+] as const;
+
+const CUSTOMER_RANKING_FOCUS = new Map<
+  string,
+  NonNullable<QueryPlan["focus"]>
+>([
+  ["highest won value", "customer_won_value"],
+  ["largest active pipeline", "customer_pipeline"],
+  ["best project execution", "customer_execution"],
+  ["combined commercial + operational importance", "customer_combined"],
+]);
 
 const GENERIC_SECTOR_PREFIXES = new Set([
   "which",
@@ -101,6 +114,29 @@ function makePlan(
   return { plan: parsed.data };
 }
 
+function customerRankingFocusFromSelection(
+  normalized: string,
+): NonNullable<QueryPlan["focus"]> | undefined {
+  let candidate = normalized;
+  const questionPrefix = `${CUSTOMER_CLARIFICATION_QUESTION} Answer:`;
+
+  if (candidate.toLowerCase().startsWith(questionPrefix.toLowerCase())) {
+    candidate = candidate.slice(questionPrefix.length).trim();
+  } else if (/^answer:\s*/i.test(candidate)) {
+    candidate = candidate.replace(/^answer:\s*/i, "").trim();
+  }
+
+  return CUSTOMER_RANKING_FOCUS.get(candidate.toLowerCase());
+}
+
+function asksForLargestOpenSector(normalized: string): boolean {
+  return (
+    /\b(which|what)\s+sector\b/i.test(normalized) &&
+    (/(largest|biggest)\s+(open\s+opportunit(?:y|ies)|pipeline)/i.test(normalized) ||
+      /most\s+open\s+opportunit(?:y|ies)/i.test(normalized))
+  );
+}
+
 export function planFounderQuestion(question: string): PlannerDecision {
   const normalized = question.trim().replace(/\s+/g, " ");
   const lower = normalized.toLowerCase();
@@ -112,44 +148,21 @@ export function planFounderQuestion(question: string): PlannerDecision {
     );
   }
 
-  if (/\b(best|top)\s+(customers?|clients?)\b/i.test(normalized)) {
-    return clarification(
-      "What should ‘best customers’ mean for this analysis?",
-      "Customer quality can mean different commercial or operational outcomes, so the system will not invent a ranking definition.",
-      CUSTOMER_CLARIFICATION_OPTIONS,
+  const rankingFocus = customerRankingFocusFromSelection(normalized);
+  if (rankingFocus) {
+    return makePlan(
+      "client_cross_board",
+      normalized,
+      { focus: rankingFocus },
+      1,
     );
   }
 
-  if (lower === "highest won value") {
-    return makePlan(
-      "client_cross_board",
-      normalized,
-      { focus: "customer_won_value" },
-      1,
-    );
-  }
-  if (lower === "largest active pipeline") {
-    return makePlan(
-      "client_cross_board",
-      normalized,
-      { focus: "customer_pipeline" },
-      1,
-    );
-  }
-  if (lower === "best project execution") {
-    return makePlan(
-      "client_cross_board",
-      normalized,
-      { focus: "customer_execution" },
-      1,
-    );
-  }
-  if (lower.includes("combined commercial") && lower.includes("operational")) {
-    return makePlan(
-      "client_cross_board",
-      normalized,
-      { focus: "customer_combined" },
-      1,
+  if (/\b(best|top)\s+(customers?|clients?)\b/i.test(normalized)) {
+    return clarification(
+      CUSTOMER_CLARIFICATION_QUESTION,
+      "Customer quality can mean different commercial or operational outcomes, so the system will not invent a ranking definition.",
+      [...CUSTOMER_CLARIFICATION_OPTIONS],
     );
   }
 
@@ -165,6 +178,18 @@ export function planFounderQuestion(question: string): PlannerDecision {
     asksAboutDataTrust
   ) {
     return makePlan("data_health", normalized);
+  }
+
+  if (
+    /\b(clients?|customers?)\b/i.test(normalized) &&
+    /\b(appear\s+in\s+both\s+boards|in\s+both\s+boards|across\s+both\s+boards)\b/i.test(normalized)
+  ) {
+    return makePlan(
+      "client_cross_board",
+      normalized,
+      { focus: "cross_board_presence" },
+      1,
+    );
   }
 
   if (
@@ -207,6 +232,15 @@ export function planFounderQuestion(question: string): PlannerDecision {
 
   if (/\b(how much.*won|won value|won revenue|revenue.*won|closed won)\b/i.test(normalized)) {
     return makePlan("won_value", normalized);
+  }
+
+  if (asksForLargestOpenSector(normalized)) {
+    return makePlan(
+      "pipeline_by_sector",
+      normalized,
+      { focus: "sector_open_pipeline" },
+      1,
+    );
   }
 
   const sector = inferSector(normalized);
