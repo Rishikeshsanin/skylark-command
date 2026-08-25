@@ -20,7 +20,7 @@ const PRIORITY_KEYS = [
   "reason",
 ];
 
-const PIPELINE_PRIMARY_KEYS = ["openPipelineValue", "wonValue", "openDeals", "wonDeals"];
+const PIPELINE_PRIMARY_KEYS = ["sector", "openPipelineValue", "wonValue", "openDeals", "wonDeals"];
 const PIPELINE_COVERAGE_KEYS = [
   "knownOpenValueDeals",
   "unknownOpenValueDeals",
@@ -137,7 +137,7 @@ function addAuthoritativeMetricLines(
   lines: string[],
 ): boolean {
   let added = false;
-  if (PIPELINE_PRIMARY_KEYS.some((key) => key in record)) {
+  if (PIPELINE_PRIMARY_KEYS.slice(1).some((key) => key in record)) {
     appendLine(lines, fieldsLine(record, PIPELINE_PRIMARY_KEYS, currencyCode, "Pipeline"));
     appendLine(lines, fieldsLine(record, PIPELINE_COVERAGE_KEYS, currencyCode, "Pipeline value coverage"));
     added = true;
