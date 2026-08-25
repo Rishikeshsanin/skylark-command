@@ -1,0 +1,102 @@
+name: RC3 Evaluator Hotfix Gate
+
+on:
+  push:
+    branches:
+      - release/rc3-hotfix
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc3-hotfix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-rc3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout RC3
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Reproducible install
+        run: npm ci
+
+      - name: Test deterministic and evaluator regressions
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Security audit — committed secrets
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          tracked = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
+          assignment = re.compile(r"(?i)\b(MONDAY_API_TOKEN|GEMINI_API_KEY|AI_API_KEY)\b\s*[:=]\s*[\"']?([^\"'\s#]+)")
+          bearer = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{20,}")
+          credential = re.compile(r"(?i)\b(password|passwd|secret)\b\s*[:=]\s*[\"']([^\"']{8,})[\"']")
+          allowed_markers = ("placeholder", "example", "changeme", "your_", "your-", "<", "${", "process.env", "undefined")
+          findings = []
+
+          for rel in tracked:
+            if not rel:
+              continue
+            path = pathlib.Path(rel)
+            try:
+              text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+              continue
+            for line_no, line in enumerate(text.splitlines(), 1):
+              for match in assignment.finditer(line):
+                value = match.group(2).strip()
+                if value and not any(marker in value.lower() for marker in allowed_markers):
+                  findings.append(f"{rel}:{line_no}: suspicious {match.group(1)} assignment")
+              if bearer.search(line):
+                findings.append(f"{rel}:{line_no}: suspicious Bearer credential")
+              cred = credential.search(line)
+              if cred and not any(marker in cred.group(2).lower() for marker in allowed_markers):
+                findings.append(f"{rel}:{line_no}: suspicious hardcoded {cred.group(1)}")
+
+          if findings:
+            print("\n".join(findings))
+            sys.exit(1)
+          print("No committed real-looking secrets detected; env names/placeholders are allowed.")
+          PY
+
+      - name: Install browser smoke dependency
+        run: |
+          npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Browser and API smoke
+        shell: bash
+        run: |
+          npm start -- -H 127.0.0.1 > /tmp/skylark-rc3-next.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json
+          CHAT_STATUS=$(curl -sS -o /tmp/chat.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json' --data '{}')
+          test "$CHAT_STATUS" = "400"
+          node .github/scripts/agent2-browser-smoke.mjs
+          node .github/scripts/rc3-evaluator-browser-smoke.mjs
