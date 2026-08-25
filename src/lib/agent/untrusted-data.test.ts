@@ -52,7 +52,7 @@ describe("untrusted business data boundary", () => {
 
   it("includes only bounded deterministic context for explanation", () => {
     const prompt = buildExplanationPrompt(promptInput);
-    expect(prompt).toContain("do not perform arithmetic");
+    expect(prompt).toContain("Never perform arithmetic");
     expect(prompt).toContain("pipeline_overview");
     expect(prompt).toContain("Source contains missing values.");
     expect(prompt).toContain("688152293.17");
