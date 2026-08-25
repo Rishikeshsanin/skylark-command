@@ -326,6 +326,14 @@ export function FounderCopilot() {
     setLoading(true);
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "user", prompt: trimmed }]);
     setQuery("");
+    requestAnimationFrame(() => {
+      inputRef.current?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "end",
+      });
+    });
 
     try {
       const request = await fetch(CHAT_ENDPOINT, {
