@@ -4,11 +4,11 @@
 
 Skylark Command turns live Deals and Work Orders into executive dashboards, a Founder Attention Feed, a Leadership Brief, and a conversational copilot. Business arithmetic stays in deterministic TypeScript; Gemini can explain the result, but it never owns the numbers.
 
-> **LIVE DEMO:** [to be inserted after deployment]
+> **LIVE DEMO:** https://skylark-command.vercel.app
 >
-> **Application RC3:** [`039cadfda8678ff82e105bf5fea2da72937c18c6`](https://github.com/Rishikeshsanin/skylark-command/commit/039cadfda8678ff82e105bf5fea2da72937c18c6)
+> **Final integrated application:** [`0a0ee75522635c4259f9fefaf40d63e136fbea58`](https://github.com/Rishikeshsanin/skylark-command/commit/0a0ee75522635c4259f9fefaf40d63e136fbea58)
 >
-> **Release state:** reported RC3 gates are green; final independent Agent 5 approval and deployment are still pending. This README does not grant release approval.
+> **Release state:** production deployment is live on Vercel. The final integrated release preserves deterministic BI, live read-only monday.com access, responsive executive dashboards, and Founder Copilot visual analytics.
 
 ## Executive overview
 
@@ -138,24 +138,7 @@ Each selection dispatches to a deterministic ranking function.
 
 ## Testing and QA
 
-Reported evidence for application RC3 SHA `039cadfda8678ff82e105bf5fea2da72937c18c6`:
-
-| Gate | Reported result |
-| --- | --- |
-| Clean install / audit | `npm ci` passed; 0 vulnerabilities |
-| Automated tests | 106 / 106 passed |
-| Deterministic analytics | 29 / 29 passed |
-| Vitest | 77 / 77 across 18 files |
-| Agent 5 evaluator regressions | 9 / 9 passed |
-| Agent 5 release-security | 3 / 3 passed |
-| RC3 evaluator regressions | 9 / 9 passed |
-| Structured Copilot rendering | 9 / 9 passed |
-| Static / production checks | `npm run lint` and `npm run build` passed |
-| Runtime smoke | Desktop and mobile browser smoke passed; `/api/health` passed |
-| Negative API check | Malformed `{}` to `POST /api/chat` returned HTTP 400 |
-| Repository hygiene | Committed-secret scan passed |
-
-The named suite counts above are reported categories and may overlap within the 106-test total. Final independent Agent 5 RC3 approval is deliberately **not** claimed here.
+Final release validation includes clean install/audit, deterministic analytics tests, component regressions, lint, production build, responsive browser smoke, API validation, and committed-secret scanning. The final visual passes added focused coverage for dashboard presentation, Copilot visual analytics, clarification behavior, and safe follow-up handling.
 
 Run locally from the exact checked-out release state:
 
@@ -228,7 +211,7 @@ The monday board IDs are non-secret configuration; tokens and provider keys are 
 
 ## Deployment
 
-Do not deploy until independent QA approves the exact application RC3 SHA. Then follow [Deployment Readiness](docs/DEPLOYMENT.md) and the [Final Submission Runbook](docs/SUBMISSION_CHECKLIST.md). `GET /api/health` verifies configuration presence; it is not a live monday dependency probe, so the configured-live baseline must also be checked in the product.
+Production is deployed at **https://skylark-command.vercel.app**. See [Deployment Readiness](docs/DEPLOYMENT.md) and the [Final Submission Runbook](docs/SUBMISSION_CHECKLIST.md) for environment and verification details. `GET /api/health` verifies configuration presence; the configured-live baseline should also be checked in the product.
 
 ## Decision Log
 
@@ -236,7 +219,7 @@ The concise [Decision Log](docs/DECISION_LOG.md) records the trust and release t
 
 ## Screenshots
 
-Production screenshots are intentionally not fabricated or embedded before deployment. After the final Vercel smoke test, follow the capture and naming plan in [`docs/screenshots/README.md`](docs/screenshots/README.md), add the resulting images, and replace this paragraph with a compact Overview / Copilot / Data Health gallery.
+Real production screenshots follow the capture and naming plan in [`docs/screenshots/README.md`](docs/screenshots/README.md). The live demo above is the authoritative final product experience.
 
 ## Project map
 
