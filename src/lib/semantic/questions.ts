@@ -1,5 +1,10 @@
 import type { BusinessDataSnapshot } from "@/lib/business-data";
-import { executePlanAgainstSnapshot } from "@/lib/agent/analytics-adapter";
+import {
+  buildDataQualityReport,
+  calculatePipelineMetrics,
+  calculateSectorMetrics,
+  calculateWorkOrderHealth,
+} from "@/lib/analytics";
 import type { QueryPlan } from "@/lib/agent/schemas";
 import type { AnalyticsResult, PipelineMetrics, SectorMetrics, WorkOrderHealth } from "@/types";
 import { assertMetricDimensions } from "./dimensions";
@@ -23,6 +28,11 @@ export interface CanonicalQuestionDefinition {
   dimensions: DimensionId[];
   plan: QueryPlan;
   description: string;
+  selection?: {
+    type: "argmax";
+    metricId: MetricId;
+    tieBreakers: string[];
+  };
 }
 
 export interface SemanticMetricValue {
@@ -71,13 +81,63 @@ export const CANONICAL_QUESTIONS: Record<CanonicalQuestionId, CanonicalQuestionD
     metricIds: ["open_pipeline_value", "open_deal_count"],
     dimensions: ["sector"],
     plan: { intent: "pipeline_by_sector", focus: "sector_open_pipeline", confidence: 1 },
-    description: "Uses the canonical sector-open-pipeline focus, which orders deterministic sector metrics by known open pipeline value.",
+    description: "Selects the sector with the largest canonical known open-pipeline value; deterministic Deal count and sector name are tie-breakers.",
+    selection: {
+      type: "argmax",
+      metricId: "open_pipeline_value",
+      tieBreakers: ["open_deal_count", "sector"],
+    },
   },
 };
 
 function assertDefinitionDimensions(definition: CanonicalQuestionDefinition): void {
   for (const metricId of definition.metricIds) {
     assertMetricDimensions(metricId, definition.dimensions);
+  }
+}
+
+function sourceQuality(
+  snapshot: BusinessDataSnapshot,
+  analysisTimestamp: string,
+) {
+  return buildDataQualityReport(
+    snapshot.deals,
+    snapshot.workOrders,
+    snapshot.normalizationIssues,
+    analysisTimestamp.slice(0, 10),
+  );
+}
+
+function executeQuestionAnalytics(
+  id: CanonicalQuestionId,
+  snapshot: BusinessDataSnapshot,
+  analysisTimestamp: string,
+): AnalyticsResult<unknown> {
+  const dataQuality = sourceQuality(snapshot, analysisTimestamp);
+  switch (id) {
+    case "open_pipeline":
+    case "won_value":
+      return {
+        data: calculatePipelineMetrics(snapshot.deals),
+        caveats: [],
+        dataQuality,
+      };
+    case "receivables":
+      return {
+        data: calculateWorkOrderHealth(snapshot.workOrders, analysisTimestamp.slice(0, 10)),
+        caveats: [],
+        dataQuality,
+      };
+    case "largest_open_sector": {
+      const sectors = calculateSectorMetrics(snapshot.deals, snapshot.workOrders);
+      const ordered = [...sectors].sort(
+        (a, b) =>
+          b.openPipelineValue - a.openPipelineValue ||
+          b.openDealCount - a.openDealCount ||
+          a.sector.localeCompare(b.sector),
+      );
+      return { data: ordered, caveats: [], dataQuality };
+    }
   }
 }
 
@@ -166,7 +226,7 @@ export function executeCanonicalQuestion(
 ): CanonicalQuestionResult {
   const definition = getCanonicalQuestionDefinition(id);
   assertDefinitionDimensions(definition);
-  const analyticsResult = executePlanAgainstSnapshot(definition.plan, snapshot);
+  const analyticsResult = executeQuestionAnalytics(id, snapshot, analysisTimestamp);
   const metricValues = metricValuesFor(id, analyticsResult);
   const lineage = buildAnswerLineage({
     metricIds: definition.metricIds,
