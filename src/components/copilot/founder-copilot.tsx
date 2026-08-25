@@ -4,6 +4,7 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -15,9 +16,16 @@ import {
 } from "@/components/ui/formatters";
 import { StatusPill } from "@/components/ui/status-pill";
 import { structuredDataLines } from "@/components/copilot/structured-data";
+import {
+  buildVisualAnalytics,
+  CopilotVisualAnalytics,
+} from "@/components/copilot/visual-analytics";
+import { planFounderQuestion } from "@/lib/agent/planner";
 
 const CHAT_ENDPOINT = "/api/chat";
 const MAX_MESSAGE_CHARS = 2_000;
+const META_FOLLOW_UP_PATTERN =
+  /^(?:(?:would|do)\s+you\s+(?:like|want|need)\b|(?:shall|should|could|may|can)\s+i\b|want\s+me\s+to\b)/i;
 
 const suggestions = [
   "How is our pipeline looking?",
@@ -128,7 +136,7 @@ function metricHighlights(dataRecord: Record<string, unknown> | null): MetricHig
   return entries;
 }
 
-function presentationFor(response: AgentResponse): Presentation {
+export function presentationFor(response: AgentResponse): Presentation {
   const responseRecord = asRecord(response);
   const dataRecord = asRecord(response.data);
   const sourceRecord = asRecord(response.source);
@@ -168,7 +176,7 @@ function presentationFor(response: AgentResponse): Presentation {
     observations: [...new Set(observations)],
     risks: [...new Set(risks)],
     attentionItems: explanation?.attentionItems ?? [],
-    followUpQuestions: explanation?.followUpQuestions ?? [],
+    followUpQuestions: followUpQuestionsFor(response),
     caveats: [...new Set([...(response.caveats ?? []), ...dataQualityCaveats])],
     metrics: metricHighlights(dataRecord),
     structuredLines: structuredDataLines(response.data, currencyCode),
@@ -176,6 +184,25 @@ function presentationFor(response: AgentResponse): Presentation {
     recordsAnalyzed,
     currencyCode,
   };
+}
+
+export function clarificationOptionsFor(response: AgentResponse): string[] {
+  const options = response.clarification?.options;
+  return Array.isArray(options)
+    ? options.filter((option) => typeof option === "string" && option.trim().length > 0)
+    : [];
+}
+
+export function followUpQuestionsFor(response: AgentResponse): string[] {
+  const questions = response.explanation?.followUpQuestions;
+  if (!Array.isArray(questions)) return [];
+
+  return [...new Set(questions.flatMap((question) => {
+    if (typeof question !== "string") return [];
+    const trimmed = question.trim();
+    if (!trimmed || META_FOLLOW_UP_PATTERN.test(trimmed)) return [];
+    return planFounderQuestion(trimmed).plan ? [trimmed] : [];
+  }))].slice(0, 4);
 }
 
 function formatMetricValue(label: string, value: string | number, currencyCode?: string) {
@@ -186,15 +213,21 @@ function formatMetricValue(label: string, value: string | number, currencyCode?:
     : formatNumber(value);
 }
 
-function AssistantResponse({
+export function AssistantResponse({
   response,
   onPrompt,
 }: {
   response: AgentResponse;
   onPrompt: (prompt: string) => void;
 }) {
-  const presentation = presentationFor(response);
+  const presentation = useMemo(() => presentationFor(response), [response]);
   const isClarification = Boolean(response.clarification?.required);
+  const visualSections = useMemo(
+    () => buildVisualAnalytics(response.data, presentation.currencyCode),
+    [response.data, presentation.currencyCode],
+  );
+  const hasVisualAnalytics = visualSections.length > 0;
+  const clarificationOptions = useMemo(() => clarificationOptionsFor(response), [response]);
 
   return (
     <article className="assistant-answer">
@@ -211,7 +244,7 @@ function AssistantResponse({
         <p className="answer-text">{presentation.executiveSummary}</p>
       </section>
 
-      {presentation.metrics.length > 0 ? (
+      {!hasVisualAnalytics && presentation.metrics.length > 0 ? (
         <section className="answer-section" aria-label="Metric highlights">
           <p className="answer-section-label">Metric highlights</p>
           <div className="answer-metrics">
@@ -225,15 +258,30 @@ function AssistantResponse({
         </section>
       ) : null}
 
+      {hasVisualAnalytics ? (
+        <CopilotVisualAnalytics sections={visualSections} />
+      ) : null}
+
       {presentation.structuredLines.length > 0 ? (
-        <section className="answer-section" aria-label="Authoritative structured results">
-          <p className="answer-section-label">Structured results</p>
-          <ul className="executive-list">
-            {presentation.structuredLines.map((line, index) => (
-              <li key={`${index}-${line}`}>{line}</li>
-            ))}
-          </ul>
-        </section>
+        hasVisualAnalytics ? (
+          <details className="answer-section copilot-supplied-details">
+            <summary>Show supplied result details</summary>
+            <ul className="executive-list" aria-label="Authoritative supplied result details">
+              {presentation.structuredLines.map((line, index) => (
+                <li key={`${index}-${line}`}>{line}</li>
+              ))}
+            </ul>
+          </details>
+        ) : (
+          <section className="answer-section" aria-label="Authoritative structured results">
+            <p className="answer-section-label">Structured results</p>
+            <ul className="executive-list">
+              {presentation.structuredLines.map((line, index) => (
+                <li key={`${index}-${line}`}>{line}</li>
+              ))}
+            </ul>
+          </section>
+        )
       ) : null}
 
       {presentation.observations.length > 0 ? (
@@ -261,9 +309,9 @@ function AssistantResponse({
         <section className="clarification-card" aria-label="Clarification required">
           <strong>{response.clarification.question}</strong>
           <p>{response.clarification.reason}</p>
-          {response.clarification.options?.length ? (
+          {clarificationOptions.length ? (
             <div className="choice-row">
-              {response.clarification.options.map((option) => (
+              {clarificationOptions.map((option) => (
                 <button
                   key={option}
                   className="choice-button"

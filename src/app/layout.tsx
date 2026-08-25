@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import "./copilot-visual-polish.css";
 import "./product-polish.css";
 import { AppShell } from "@/components/shell/app-shell";
 
