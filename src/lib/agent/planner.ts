@@ -13,6 +13,16 @@ const CUSTOMER_CLARIFICATION_OPTIONS = [
   "Combined commercial + operational importance",
 ];
 
+const GENERIC_SECTOR_PREFIXES = new Set([
+  "which",
+  "what",
+  "whose",
+  "this",
+  "that",
+  "the",
+  "our",
+]);
+
 function clarification(
   question: string,
   reason: string,
@@ -50,14 +60,21 @@ function inferPeriod(text: string): Pick<QueryPlan, "period" | "quarter"> {
   return {};
 }
 
+function normalizeSectorCandidate(candidate: string | undefined): string | undefined {
+  const trimmed = candidate?.trim();
+  if (!trimmed) return undefined;
+  return GENERIC_SECTOR_PREFIXES.has(trimmed.toLowerCase()) ? undefined : trimmed;
+}
+
 function inferSector(text: string): string | undefined {
   const prefixed = text.match(
     /\b(?:the|our|in|for)\s+([a-z][a-z0-9&/-]*(?:\s+[a-z0-9&/-]+){0,2})\s+sector\b/i,
   );
-  if (prefixed?.[1]) return prefixed[1].trim();
+  const prefixedCandidate = normalizeSectorCandidate(prefixed?.[1]);
+  if (prefixedCandidate) return prefixedCandidate;
 
   const singleWord = text.match(/\b([a-z][a-z0-9&/-]*)\s+sector\b/i);
-  return singleWord?.[1]?.trim();
+  return normalizeSectorCandidate(singleWord?.[1]);
 }
 
 function makePlan(
@@ -140,7 +157,13 @@ export function planFounderQuestion(question: string): PlannerDecision {
     return makePlan("leadership_brief", normalized);
   }
 
-  if (/\b(data quality|data health|missing data|bad data|malformed data)\b/i.test(normalized)) {
+  const asksAboutDataTrust =
+    /\bdata\b/i.test(normalized) &&
+    /\b(trust|trustworthy|reliable|unreliable|reliability|confidence)\b/i.test(normalized);
+  if (
+    /\b(data quality|data health|missing data|bad data|malformed data)\b/i.test(normalized) ||
+    asksAboutDataTrust
+  ) {
     return makePlan("data_health", normalized);
   }
 
@@ -163,6 +186,13 @@ export function planFounderQuestion(question: string): PlannerDecision {
     return makePlan("receivables", normalized, { focus: "billing" });
   }
 
+  if (
+    /\b(projects?|work orders?)\b/i.test(normalized) &&
+    /\b(leadership attention|need attention|needs attention|at risk|risk|risky)\b/i.test(normalized)
+  ) {
+    return makePlan("work_order_health", normalized, { focus: "attention" });
+  }
+
   if (/\b(delayed|delay|overdue)\b/i.test(normalized) && /\b(work orders?|projects?|operations?)\b/i.test(normalized)) {
     return makePlan("work_order_health", normalized, { focus: "delayed" });
   }
@@ -182,6 +212,9 @@ export function planFounderQuestion(question: string): PlannerDecision {
   const sector = inferSector(normalized);
   if (sector) {
     return makePlan("pipeline_by_sector", normalized, { sector });
+  }
+  if (/\bsectors?\b/i.test(normalized)) {
+    return makePlan("pipeline_by_sector", normalized);
   }
 
   if (/\b(pipeline by stage|stage breakdown|deal stages?)\b/i.test(normalized)) {
