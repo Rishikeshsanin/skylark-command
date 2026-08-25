@@ -25,11 +25,38 @@ function formatEvidenceValue(
   return monetary ? formatAmount(value, currencyCode) : formatNumber(value, 1);
 }
 
-function labelize(key: string) {
-  return key
-    .replace(/([A-Z])/g, " $1")
-    .replace(/_/g, " ")
-    .replace(/^./, (char) => char.toUpperCase());
+function evidenceValue(item: FounderAttentionItem, keys: string[]) {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(item.evidenceMetrics, key)) {
+      return { key, value: item.evidenceMetrics[key] };
+    }
+  }
+  return null;
+}
+
+function attentionValue(
+  item: FounderAttentionItem,
+  keys: string[],
+  currencyCode?: string,
+) {
+  const evidence = evidenceValue(item, keys);
+  return evidence
+    ? formatEvidenceValue(evidence.key, evidence.value, currencyCode)
+    : "—";
+}
+
+function AttentionReason({ item }: { item: FounderAttentionItem }) {
+  return (
+    <details className="attention-reason-detail">
+      <summary>{item.title}</summary>
+      <div>
+        <p>{item.reason}</p>
+        {item.dataQualityCaveat ? (
+          <p className="attention-caveat">Data caveat: {item.dataQualityCaveat}</p>
+        ) : null}
+      </div>
+    </details>
+  );
 }
 
 export function FounderAttention({
@@ -38,6 +65,7 @@ export function FounderAttention({
   currency,
 }: FounderAttentionProps) {
   const resolvedCurrency = feed?.currencyCode ?? currency;
+  const attentionItems = feed?.items.slice(0, 10) ?? [];
 
   return (
     <Panel
@@ -45,43 +73,79 @@ export function FounderAttention({
       description="Rule-based founder attention signals from canonical deterministic analytics."
     >
       {feed ? (
-        feed.items.length ? (
+        attentionItems.length ? (
           <div className="founder-attention-list">
-            {feed.items.slice(0, 10).map((item, index) => (
-              <article
-                className={`founder-attention-item attention-${item.severity.toLowerCase()}`}
-                key={`${item.severity}-${item.entity}-${item.recommendedAttentionCategory}-${index}`}
-              >
-                <div className="attention-rank">
-                  <StatusPill tone={item.severity === "HIGH" ? "critical" : "warning"}>
-                    {item.severity}
-                  </StatusPill>
-                </div>
-                <div className="attention-body">
-                  <div className="attention-heading">
-                    <strong>{item.entity}</strong>
-                    <span>{item.client ?? item.relevantSource.replace("_", " ")}</span>
+            <div className="attention-table-wrap">
+              <table className="attention-table">
+                <caption className="sr-only">Ranked founder attention items</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Priority</th>
+                    <th scope="col">Customer</th>
+                    <th scope="col">Reason</th>
+                    <th scope="col" className="attention-number">Receivables</th>
+                    <th scope="col" className="attention-number">AR Priority WOs</th>
+                    <th scope="col" className="attention-number">Work Orders</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attentionItems.map((item, index) => (
+                    <tr key={`${item.severity}-${item.entity}-${item.recommendedAttentionCategory}-${index}`}>
+                      <td>
+                        <StatusPill tone={item.severity === "HIGH" ? "critical" : "warning"}>
+                          {item.severity}
+                        </StatusPill>
+                      </td>
+                      <td className="attention-customer"><strong>{item.client ?? item.entity}</strong></td>
+                      <td className="attention-reason"><AttentionReason item={item} /></td>
+                      <td className="attention-number">
+                        {attentionValue(item, ["receivables", "amountReceivable"], resolvedCurrency)}
+                      </td>
+                      <td className="attention-number">
+                        {attentionValue(item, ["arPriorityWorkOrders"], resolvedCurrency)}
+                      </td>
+                      <td className="attention-number">
+                        {attentionValue(item, ["workOrders", "activeWorkOrders"], resolvedCurrency)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="attention-mobile-list" role="list" aria-label="Ranked founder attention items">
+              {attentionItems.map((item, index) => (
+                <article
+                  className={`attention-mobile-item attention-${item.severity.toLowerCase()}`}
+                  key={`${item.severity}-${item.entity}-${item.recommendedAttentionCategory}-${index}`}
+                  role="listitem"
+                >
+                  <div className="attention-mobile-heading">
+                    <StatusPill tone={item.severity === "HIGH" ? "critical" : "warning"}>
+                      {item.severity}
+                    </StatusPill>
+                    <strong>{item.client ?? item.entity}</strong>
                   </div>
-                  <h3>{item.title}</h3>
-                  <p>{item.reason}</p>
-                  {Object.keys(item.evidenceMetrics).length ? (
-                    <dl className="attention-metrics">
-                      {Object.entries(item.evidenceMetrics).map(([key, value]) => (
-                        <div key={key}>
-                          <dt>{labelize(key)}</dt>
-                          <dd>{formatEvidenceValue(key, value, resolvedCurrency)}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  ) : null}
-                  {item.dataQualityCaveat ? (
-                    <p className="attention-caveat">Caveat: {item.dataQualityCaveat}</p>
-                  ) : null}
-                </div>
-              </article>
-            ))}
+                  <div className="attention-mobile-reason"><AttentionReason item={item} /></div>
+                  <dl className="attention-mobile-metrics">
+                    <div>
+                      <dt>Receivables</dt>
+                      <dd>{attentionValue(item, ["receivables", "amountReceivable"], resolvedCurrency)}</dd>
+                    </div>
+                    <div>
+                      <dt>AR WOs</dt>
+                      <dd>{attentionValue(item, ["arPriorityWorkOrders"], resolvedCurrency)}</dd>
+                    </div>
+                    <div>
+                      <dt>WOs</dt>
+                      <dd>{attentionValue(item, ["workOrders", "activeWorkOrders"], resolvedCurrency)}</dd>
+                    </div>
+                  </dl>
+                </article>
+              ))}
+            </div>
             {feed.caveats.length ? (
-              <div className="attention-feed-caveats">
+              <div className="attention-feed-caveats" role="note" aria-label="Attention data caveats">
                 {feed.caveats.map((caveat) => <p key={caveat}>{caveat}</p>)}
               </div>
             ) : null}
