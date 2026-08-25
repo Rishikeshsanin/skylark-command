@@ -1,4 +1,4 @@
-import { formatAmount, formatNumber } from "@/components/ui/formatters";
+import { formatAmount, formatAmountFull, formatNumber } from "@/components/ui/formatters";
 
 const MAX_LINES = 40;
 const MAX_FIELDS_PER_LINE = 8;
@@ -58,7 +58,7 @@ function formatPrimitive(key: string, value: string | number | boolean, currency
 }
 
 function formatMoney(value: number, currencyCode?: string): string {
-  return currencyCode ? formatAmount(value, currencyCode) : formatNumber(value);
+  return currencyCode ? formatAmountFull(value, currencyCode) : formatNumber(value, 2);
 }
 
 function primitiveEntries(record: Record<string, unknown>): Array<[string, string | number | boolean]> {
