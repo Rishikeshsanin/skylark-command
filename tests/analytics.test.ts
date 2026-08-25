@@ -16,20 +16,23 @@ test("pipeline metrics use only deterministic known values", () => {
     makeDeal({ mondayItemId: "1", value: 100, status: "Open" }),
     makeDeal({ mondayItemId: "2", value: null, status: "Open" }),
     makeDeal({ mondayItemId: "3", value: 300, status: "Won" }),
-    makeDeal({ mondayItemId: "4", value: 50, status: "Dead" }),
+    makeDeal({ mondayItemId: "4", value: null, status: "Won" }),
+    makeDeal({ mondayItemId: "5", value: 50, status: "Dead" }),
   ];
 
   assert.deepEqual(calculatePipelineMetrics(deals), {
-    totalDeals: 4,
+    totalDeals: 5,
     openDeals: 2,
     activeDeals: 2,
-    wonDeals: 1,
+    wonDeals: 2,
     deadDeals: 1,
     openPipelineValue: 100,
     wonValue: 300,
     averageOpenDealSize: 100,
     knownOpenValueDeals: 1,
     unknownOpenValueDeals: 1,
+    knownWonValueDeals: 1,
+    unknownWonValueDeals: 1,
   });
 });
 
@@ -45,6 +48,8 @@ test("pipeline metrics handle empty datasets", () => {
     averageOpenDealSize: null,
     knownOpenValueDeals: 0,
     unknownOpenValueDeals: 0,
+    knownWonValueDeals: 0,
+    unknownWonValueDeals: 0,
   });
 });
 
