@@ -11,8 +11,8 @@ import type {
   TemporalFreshness,
   TemporalSnapshotStore,
 } from "@/lib/data-platform/contracts";
-import { loadBusinessDataForAnalytics } from "@/lib/data-platform/serving";
-import { runBusinessDataSync } from "@/lib/data-platform/sync";
+import { loadBusinessDataFromTemporalStore } from "@/lib/data-platform/serving-core";
+import { runBusinessDataSyncCore } from "@/lib/data-platform/sync-core";
 import { calculateSourceWatermark } from "@/lib/data-platform/watermark";
 import { makeDeal, makeWorkOrder } from "./fixtures";
 
@@ -94,11 +94,7 @@ class MemoryTemporalStore implements TemporalSnapshotStore {
   async failSync(input: { syncId: string; finishedAt: string; error: string }) {
     const run = this.runs.find((candidate) => candidate.id === input.syncId);
     assert.ok(run);
-    Object.assign(run, {
-      finishedAt: input.finishedAt,
-      status: "failed" as const,
-      error: input.error,
-    });
+    Object.assign(run, { finishedAt: input.finishedAt, status: "failed" as const, error: input.error });
     return { ...run };
   }
 
@@ -134,22 +130,11 @@ class MemoryTemporalStore implements TemporalSnapshotStore {
 function snapshot(fetchedAt = "2026-08-25T10:00:00.000Z"): BusinessDataSnapshot {
   return {
     deals: [
-      makeDeal({
-        mondayItemId: "deal-1",
-        normalizedClientKey: "COMPANY001",
-        value: null,
-        closeDate: null,
-        tentativeCloseDate: "2026-09-30",
-      }),
+      makeDeal({ mondayItemId: "deal-1", normalizedClientKey: "COMPANY001", value: null, closeDate: null, tentativeCloseDate: "2026-09-30" }),
       makeDeal({ mondayItemId: "deal-2", normalizedClientKey: "COMPANY002", value: 500 }),
     ],
     workOrders: [
-      makeWorkOrder({
-        mondayItemId: "wo-1",
-        normalizedClientKey: "COMPANY001",
-        amountReceivable: null,
-        probableEndDate: null,
-      }),
+      makeWorkOrder({ mondayItemId: "wo-1", normalizedClientKey: "COMPANY001", amountReceivable: null, probableEndDate: null }),
     ],
     normalizationIssues: [],
     source: {
@@ -169,10 +154,19 @@ function idSequence(...ids: string[]) {
   return () => ids[index++] ?? `generated-${index}`;
 }
 
+function syncOptions(store: MemoryTemporalStore, liveLoader: () => Promise<BusinessDataSnapshot>, ids: string[], at: string) {
+  return {
+    store,
+    liveLoader,
+    workspaceKey: "skylark-command",
+    now: () => new Date(at),
+    createId: idSequence(...ids),
+  };
+}
+
 test("migration defines temporal sync and historical snapshot constraints", async () => {
   const path = join(process.cwd(), "src/lib/data-platform/migrations/001_temporal_intelligence.sql");
   const sql = await readFile(path, "utf8");
-
   for (const required of [
     "CREATE TABLE IF NOT EXISTS schema_migrations",
     "CREATE TABLE IF NOT EXISTS sync_runs",
@@ -182,9 +176,7 @@ test("migration defines temporal sync and historical snapshot constraints", asyn
     "UNIQUE (workspace_key, source_watermark)",
     "normalized_payload JSONB NOT NULL",
     "source_watermark TEXT",
-  ]) {
-    assert.ok(sql.includes(required), `migration should include ${required}`);
-  }
+  ]) assert.ok(sql.includes(required), `migration should include ${required}`);
 });
 
 test("source watermark is stable across row order and fetch timestamps", () => {
@@ -192,25 +184,14 @@ test("source watermark is stable across row order and fetch timestamps", () => {
   const second = snapshot("2026-08-25T11:00:00.000Z");
   second.deals.reverse();
   assert.equal(calculateSourceWatermark(first), calculateSourceWatermark(second));
-
   second.deals[0] = { ...second.deals[0], value: 999 };
   assert.notEqual(calculateSourceWatermark(first), calculateSourceWatermark(second));
 });
 
 test("sync is idempotent while recording every successful run", async () => {
   const store = new MemoryTemporalStore();
-  const first = await runBusinessDataSync({
-    store,
-    liveLoader: async () => snapshot("2026-08-25T10:00:00.000Z"),
-    now: () => new Date("2026-08-25T10:05:00.000Z"),
-    createId: idSequence("sync-1", "snapshot-1"),
-  });
-  const second = await runBusinessDataSync({
-    store,
-    liveLoader: async () => snapshot("2026-08-25T11:00:00.000Z"),
-    now: () => new Date("2026-08-25T11:05:00.000Z"),
-    createId: idSequence("sync-2", "snapshot-2"),
-  });
+  const first = await runBusinessDataSyncCore(syncOptions(store, async () => snapshot("2026-08-25T10:00:00.000Z"), ["sync-1", "snapshot-1"], "2026-08-25T10:05:00.000Z"));
+  const second = await runBusinessDataSyncCore(syncOptions(store, async () => snapshot("2026-08-25T11:00:00.000Z"), ["sync-2", "snapshot-2"], "2026-08-25T11:05:00.000Z"));
 
   assert.equal(first.recordsPersisted, 3);
   assert.equal(first.reusedExistingSnapshot, false);
@@ -224,14 +205,9 @@ test("sync is idempotent while recording every successful run", async () => {
 
 test("latest successful snapshot preserves nulls and source provenance", async () => {
   const store = new MemoryTemporalStore();
-  await runBusinessDataSync({
-    store,
-    liveLoader: async () => snapshot(),
-    now: () => new Date("2026-08-25T10:05:00.000Z"),
-    createId: idSequence("sync-1", "snapshot-1"),
-  });
-
+  await runBusinessDataSyncCore(syncOptions(store, async () => snapshot(), ["sync-1", "snapshot-1"], "2026-08-25T10:05:00.000Z"));
   const stored = await store.loadLatestSuccessfulSnapshot("skylark-command");
+
   assert.ok(stored);
   assert.equal(stored.deals[0].value, null);
   assert.equal(stored.deals[0].closeDate, null);
@@ -245,19 +221,12 @@ test("latest successful snapshot preserves nulls and source provenance", async (
 
 test("freshness distinguishes fresh, stale, syncing, and failed", async () => {
   const store = new MemoryTemporalStore();
-  await runBusinessDataSync({
-    store,
-    liveLoader: async () => snapshot(),
-    now: () => new Date("2026-08-25T10:05:00.000Z"),
-    createId: idSequence("sync-1", "snapshot-1"),
-  });
+  await runBusinessDataSyncCore(syncOptions(store, async () => snapshot(), ["sync-1", "snapshot-1"], "2026-08-25T10:05:00.000Z"));
 
   assert.equal((await store.getFreshness({ workspaceKey: "skylark-command", now: "2026-08-25T10:30:00.000Z", staleAfterMs: 3_600_000 })).state, "fresh");
   assert.equal((await store.getFreshness({ workspaceKey: "skylark-command", now: "2026-08-25T12:30:00.000Z", staleAfterMs: 3_600_000 })).state, "stale");
-
   await store.beginSync({ syncId: "sync-2", workspaceKey: "skylark-command", startedAt: "2026-08-25T12:31:00.000Z" });
   assert.equal((await store.getFreshness({ workspaceKey: "skylark-command", now: "2026-08-25T12:31:30.000Z", staleAfterMs: 3_600_000 })).state, "syncing");
-
   await store.failSync({ syncId: "sync-2", finishedAt: "2026-08-25T12:32:00.000Z", error: "upstream unavailable" });
   const failed = await store.getFreshness({ workspaceKey: "skylark-command", now: "2026-08-25T12:32:00.000Z", staleAfterMs: 3_600_000 });
   assert.equal(failed.state, "failed");
@@ -267,38 +236,20 @@ test("freshness distinguishes fresh, stale, syncing, and failed", async () => {
 
 test("failed sync preserves last-known-good snapshot", async () => {
   const store = new MemoryTemporalStore();
-  await runBusinessDataSync({
-    store,
-    liveLoader: async () => snapshot(),
-    now: () => new Date("2026-08-25T10:05:00.000Z"),
-    createId: idSequence("sync-1", "snapshot-1"),
-  });
-
+  await runBusinessDataSyncCore(syncOptions(store, async () => snapshot(), ["sync-1", "snapshot-1"], "2026-08-25T10:05:00.000Z"));
   await assert.rejects(
-    runBusinessDataSync({
-      store,
-      liveLoader: async () => { throw new Error("monday outage"); },
-      now: () => new Date("2026-08-25T11:00:00.000Z"),
-      createId: idSequence("sync-2"),
-    }),
+    runBusinessDataSyncCore(syncOptions(store, async () => { throw new Error("monday outage"); }, ["sync-2"], "2026-08-25T11:00:00.000Z")),
     /monday outage/,
   );
-
-  const latest = await store.loadLatestSuccessfulSnapshot("skylark-command");
-  assert.equal(latest?.temporal.snapshotId, "snapshot-1");
+  assert.equal((await store.loadLatestSuccessfulSnapshot("skylark-command"))?.temporal.snapshotId, "snapshot-1");
   assert.equal(store.runs.at(-1)?.status, "failed");
 });
 
-test("temporal preferred serves last-known-good without touching live monday", async () => {
+test("temporal preferred serves LKG without live fetch and exposes provenance", async () => {
   const store = new MemoryTemporalStore();
-  await runBusinessDataSync({
-    store,
-    liveLoader: async () => snapshot(),
-    now: () => new Date("2026-08-25T10:05:00.000Z"),
-    createId: idSequence("sync-1", "snapshot-1"),
-  });
+  await runBusinessDataSyncCore(syncOptions(store, async () => snapshot(), ["sync-1", "snapshot-1"], "2026-08-25T10:05:00.000Z"));
   let liveCalls = 0;
-  const served = await loadBusinessDataForAnalytics({
+  const served = await loadBusinessDataFromTemporalStore({
     mode: "temporal_preferred",
     store,
     now: new Date("2026-08-25T10:30:00.000Z"),
@@ -317,7 +268,7 @@ test("temporal preferred falls back live only when no LKG is available", async (
   const store = new MemoryTemporalStore();
   let liveCalls = 0;
   const live = snapshot("2026-08-25T12:00:00.000Z");
-  const served = await loadBusinessDataForAnalytics({
+  const served = await loadBusinessDataFromTemporalStore({
     mode: "temporal_preferred",
     store,
     liveLoader: async () => { liveCalls += 1; return live; },
@@ -329,11 +280,7 @@ test("temporal preferred falls back live only when no LKG is available", async (
 
 test("temporal only refuses to hide missing persistent state", async () => {
   await assert.rejects(
-    loadBusinessDataForAnalytics({
-      mode: "temporal_only",
-      store: new MemoryTemporalStore(),
-      liveLoader: async () => snapshot(),
-    }),
+    loadBusinessDataFromTemporalStore({ mode: "temporal_only", store: new MemoryTemporalStore(), liveLoader: async () => snapshot() }),
     /No successful temporal snapshot/,
   );
 });
