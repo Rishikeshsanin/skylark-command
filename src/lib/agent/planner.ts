@@ -115,6 +115,12 @@ function controlledCustomerRankingFocus(
   return undefined;
 }
 
+function usesControlledCustomerAnswerFrame(text: string): boolean {
+  return CUSTOMER_ANSWER_PREFIXES.some((prefix) =>
+    text.toLowerCase().startsWith(prefix.toLowerCase()),
+  );
+}
+
 function asksForSectorOpenPipelineRanking(text: string): boolean {
   return /^(?:which|what) sector has the (?:largest|biggest|most) (?:open opportunit(?:y|ies)|pipeline)\??$/i.test(
     text,
@@ -162,6 +168,14 @@ export function planFounderQuestion(question: string): PlannerDecision {
       normalized,
       { focus: controlledRankingFocus },
       1,
+    );
+  }
+
+  if (usesControlledCustomerAnswerFrame(normalized)) {
+    return clarification(
+      "What should ‘best customers’ mean for this analysis?",
+      "The supplied clarification answer did not exactly match a supported option.",
+      [...CUSTOMER_CLARIFICATION_OPTIONS],
     );
   }
 
