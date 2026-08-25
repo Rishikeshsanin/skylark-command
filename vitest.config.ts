@@ -12,6 +12,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      "server-only": path.resolve(rootDir, "src/test/server-only.ts"),
       "@": path.resolve(rootDir, "src"),
     },
   },
