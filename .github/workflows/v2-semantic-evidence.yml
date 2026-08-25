@@ -1,0 +1,29 @@
+name: V2 Semantic Evidence
+
+on:
+  push:
+    branches:
+      - v2/semantic-evidence
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  semantic-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Test
+        run: npm test
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
