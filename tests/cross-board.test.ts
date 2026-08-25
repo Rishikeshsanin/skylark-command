@@ -3,8 +3,10 @@ import test from "node:test";
 
 import {
   buildClientIntelligence,
+  calculateOpenPipelineSectorRanking,
   calculateSectorMetrics,
   clientsWithOpenDealsAndActiveWorkOrders,
+  summarizeCrossBoardClientCoverage,
 } from "../src/lib/analytics/index";
 import { makeDeal, makeWorkOrder } from "./fixtures";
 
@@ -50,4 +52,45 @@ test("sector metrics combine commercial and operational exposure", () => {
     workOrderValueInclGst: 118,
     receivables: 20,
   });
+});
+
+test("open opportunity sector ranking sorts only by open pipeline value", () => {
+  const deals = [
+    makeDeal({ mondayItemId: "d-mining", sector: "Mining", status: "Open", value: 100 }),
+    makeDeal({ mondayItemId: "d-power", sector: "Powerline", status: "Open", value: 200 }),
+    makeDeal({ mondayItemId: "d-power-missing", sector: "Powerline", status: "Open", value: null }),
+  ];
+  const workOrders = [makeWorkOrder({ sector: "Mining", amountInclGst: 10_000 })];
+
+  assert.equal(calculateSectorMetrics(deals, workOrders)[0].sector, "Mining");
+
+  const ranking = calculateOpenPipelineSectorRanking(deals);
+  assert.equal(ranking.recordsAnalyzed, 3);
+  assert.equal(ranking.entries[0].sector, "Powerline");
+  assert.equal(ranking.entries[0].rank, 1);
+  assert.equal(ranking.entries[0].openPipelineValue, 200);
+  assert.equal(ranking.entries[0].knownOpenValueDeals, 1);
+  assert.equal(ranking.entries[0].unknownOpenValueDeals, 1);
+  assert.ok(ranking.entries[0].caveats.length > 0);
+});
+
+test("cross-board coverage counts unique Work Order client keys and preserves evidence", () => {
+  const deals = [
+    makeDeal({ mondayItemId: "d1", normalizedClientKey: "COMPANY001" }),
+    makeDeal({ mondayItemId: "d2", normalizedClientKey: "COMPANY002" }),
+  ];
+  const workOrders = [
+    makeWorkOrder({ mondayItemId: "w1", normalizedClientKey: "COMPANY001" }),
+    makeWorkOrder({ mondayItemId: "w2", normalizedClientKey: "COMPANY001" }),
+    makeWorkOrder({ mondayItemId: "w3", normalizedClientKey: "COMPANY042" }),
+    makeWorkOrder({ mondayItemId: "w4", normalizedClientKey: "COMPANY042" }),
+  ];
+
+  const summary = summarizeCrossBoardClientCoverage(deals, workOrders);
+  assert.equal(summary.totalUniqueWorkOrderClientKeys, 2);
+  assert.equal(summary.matchedUniqueClientKeys, 1);
+  assert.equal(summary.unmatchedUniqueClientKeys, 1);
+  assert.deepEqual(summary.unmatchedWorkOrderClientKeys, ["COMPANY042"]);
+  assert.deepEqual(summary.matchedClients.map((client) => client.normalizedClientKey), ["COMPANY001"]);
+  assert.deepEqual(summary.matchedClients[0].evidence.workOrderItemIds, ["w1", "w2"]);
 });

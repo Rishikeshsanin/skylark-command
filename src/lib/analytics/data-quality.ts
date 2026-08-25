@@ -40,20 +40,20 @@ export function buildDataQualityReport(
   asOfDate?: string,
 ): DataQualityReport {
   const issues = [...normalizationIssues];
-  const dealKeys = new Set(deals.map((deal) => deal.normalizedClientKey).filter((value): value is string => Boolean(value)));
-  const unmappedWorkOrderIds = new Set<string>();
+  const dealKeys = new Set(
+    deals
+      .filter((deal) => !deal.malformed)
+      .map((deal) => deal.normalizedClientKey)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const unmappedWorkOrdersByKey = new Map<string, string[]>();
 
   for (const workOrder of workOrders) {
-    if (workOrder.normalizedClientKey && !dealKeys.has(workOrder.normalizedClientKey)) {
-      unmappedWorkOrderIds.add(workOrder.mondayItemId);
-      issues.push({
-        code: "unmapped_client",
-        severity: "warning",
-        entityType: "work_order",
-        entityId: workOrder.mondayItemId,
-        field: "normalizedClientKey",
-        message: `No Deals client matched Work Order client key ${workOrder.normalizedClientKey}.`,
-      });
+    if (!workOrder.malformed && workOrder.normalizedClientKey && !dealKeys.has(workOrder.normalizedClientKey)) {
+      unmappedWorkOrdersByKey.set(workOrder.normalizedClientKey, [
+        ...(unmappedWorkOrdersByKey.get(workOrder.normalizedClientKey) ?? []),
+        workOrder.mondayItemId,
+      ]);
     }
 
     if (workOrder.probableStartDate && workOrder.probableEndDate && compareIsoDate(workOrder.probableEndDate, workOrder.probableStartDate) < 0) {
@@ -66,6 +66,19 @@ export function buildDataQualityReport(
         message: "Probable end date is before probable start date.",
       });
     }
+  }
+
+  const unmappedWorkOrderClientKeys = [...unmappedWorkOrdersByKey.keys()].sort();
+  for (const key of unmappedWorkOrderClientKeys) {
+    const affectedIds = (unmappedWorkOrdersByKey.get(key) ?? []).sort();
+    issues.push({
+      code: "unmapped_client",
+      severity: "warning",
+      entityType: "dataset",
+      field: "normalizedClientKey",
+      rawValue: key,
+      message: `No Deals client matched Work Order client key ${key}; ${affectedIds.length} Work Order record(s) use this unmatched key.`,
+    });
   }
 
   const serials = new Map<string, string[]>();
@@ -130,7 +143,8 @@ export function buildDataQualityReport(
     totalWorkOrders: workOrders.length,
     malformedDeals: deals.filter((deal) => deal.malformed).length,
     malformedWorkOrders: workOrders.filter((workOrder) => workOrder.malformed).length,
-    unmappedWorkOrderClients: unmappedWorkOrderIds.size,
+    unmappedWorkOrderClients: unmappedWorkOrderClientKeys.length,
+    unmappedWorkOrderClientKeys,
     issueCounts,
     issues,
   };

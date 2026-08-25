@@ -30,7 +30,22 @@ test("pipeline metrics use only deterministic known values", () => {
     averageOpenDealSize: 100,
     knownOpenValueDeals: 1,
     unknownOpenValueDeals: 1,
+    knownWonValueDeals: 1,
+    unknownWonValueDeals: 0,
   });
+});
+
+test("pipeline metrics expose incomplete won-value coverage", () => {
+  const metrics = calculatePipelineMetrics([
+    makeDeal({ mondayItemId: "won-known", status: "Won", value: 250 }),
+    makeDeal({ mondayItemId: "won-missing", status: "Won", value: null }),
+    makeDeal({ mondayItemId: "open", status: "Open", value: 50 }),
+  ]);
+
+  assert.equal(metrics.wonDeals, 2);
+  assert.equal(metrics.wonValue, 250);
+  assert.equal(metrics.knownWonValueDeals, 1);
+  assert.equal(metrics.unknownWonValueDeals, 1);
 });
 
 test("pipeline metrics handle empty datasets", () => {
@@ -45,6 +60,8 @@ test("pipeline metrics handle empty datasets", () => {
     averageOpenDealSize: null,
     knownOpenValueDeals: 0,
     unknownOpenValueDeals: 0,
+    knownWonValueDeals: 0,
+    unknownWonValueDeals: 0,
   });
 });
 

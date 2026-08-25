@@ -125,7 +125,9 @@ export interface DataQualityReport {
   totalWorkOrders: number;
   malformedDeals: number;
   malformedWorkOrders: number;
+  /** Unique normalized Work Order client keys with no exact normalized Deals match. */
   unmappedWorkOrderClients: number;
+  unmappedWorkOrderClientKeys: string[];
   issueCounts: DataQualityIssueCounts;
   issues: DataQualityIssue[];
 }
@@ -142,11 +144,15 @@ export interface PipelineMetrics {
   activeDeals: number;
   wonDeals: number;
   deadDeals: number;
+  /** Sum of known values only; use known/unknown coverage fields with this amount. */
   openPipelineValue: number;
+  /** Sum of known won-deal values only; use knownWonValueDeals/unknownWonValueDeals with this amount. */
   wonValue: number;
   averageOpenDealSize: Nullable<number>;
   knownOpenValueDeals: number;
   unknownOpenValueDeals: number;
+  knownWonValueDeals: number;
+  unknownWonValueDeals: number;
 }
 
 export interface StageMetric {
@@ -167,6 +173,50 @@ export interface SectorMetrics {
   activeWorkOrderCount: number;
   workOrderValueInclGst: number;
   receivables: number;
+}
+
+/** Canonical evaluator-facing ranking for "largest open opportunity sector". */
+export interface OpenPipelineSectorRankingEntry {
+  rank: number;
+  sector: string;
+  openDealCount: number;
+  knownOpenValueDeals: number;
+  unknownOpenValueDeals: number;
+  openPipelineValue: number;
+  evidence: {
+    dealItemIds: string[];
+  };
+  caveats: string[];
+}
+
+export interface OpenPipelineSectorRanking {
+  currencyCode: "INR";
+  recordsAnalyzed: number;
+  entries: OpenPipelineSectorRankingEntry[];
+  caveats: string[];
+}
+
+export interface CrossBoardMatchedClientEvidence {
+  normalizedClientKey: string;
+  dealRecords: number;
+  workOrderRecords: number;
+  evidence: {
+    dealItemIds: string[];
+    workOrderItemIds: string[];
+  };
+}
+
+/** Exact normalized-key coverage between Work Orders and Deals. No fuzzy matching. */
+export interface CrossBoardClientCoverageSummary {
+  totalUniqueWorkOrderClientKeys: number;
+  matchedUniqueClientKeys: number;
+  unmatchedUniqueClientKeys: number;
+  unmatchedWorkOrderClientKeys: string[];
+  matchedClients: CrossBoardMatchedClientEvidence[];
+  dealRecordsAnalyzed: number;
+  workOrderRecordsAnalyzed: number;
+  workOrderRecordsWithoutClientKey: number;
+  caveats: string[];
 }
 
 export interface QuarterMetric {
