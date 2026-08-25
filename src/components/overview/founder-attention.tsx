@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type {
   ClientIntelligence,
@@ -33,6 +34,14 @@ function labelize(key: string) {
     .replace(/([A-Z])/g, " $1")
     .replace(/_/g, " ")
     .replace(/^./, (char) => char.toUpperCase());
+}
+
+function CustomerLink({ client }: { client: string }) {
+  return (
+    <Link className="customer-link" href={`/customers/${encodeURIComponent(client)}`}>
+      {client}
+    </Link>
+  );
 }
 
 export function FounderAttention({
@@ -70,7 +79,7 @@ export function FounderAttention({
                 <div className="attention-body">
                   <div className="attention-heading">
                     <strong>{item.entity}</strong>
-                    <span>{item.client ?? item.relevantSource.replace("_", " ")}</span>
+                    {item.client ? <CustomerLink client={item.client} /> : <span>{item.relevantSource.replace("_", " ")}</span>}
                   </div>
                   <h3>{item.title}</h3>
                   <p>{item.reason}</p>
@@ -119,7 +128,7 @@ export function FounderAttention({
               {fallbackClients.slice(0, 6).map((client) => (
                 <div key={client.normalizedClientKey}>
                   <div>
-                    <strong>{client.normalizedClientKey}</strong>
+                    <CustomerLink client={client.normalizedClientKey} />
                     <span>{client.operationalRiskReasons.join(" · ") || "Combined commercial and operational exposure"}</span>
                   </div>
                   <div className="compact-value">
