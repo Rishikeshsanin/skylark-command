@@ -33,7 +33,7 @@ function AssistantResponse({ response, onChoice }: { response: AgentResponse; on
   );
 }
 
-export function FounderCopilot({ endpoint = "/api/copilot" }: { endpoint?: string }) {
+export function FounderCopilot({ endpoint = "/api/chat" }: { endpoint?: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -50,7 +50,7 @@ export function FounderCopilot({ endpoint = "/api/copilot" }: { endpoint?: strin
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", prompt: trimmed };
     setMessages((current) => [...current, userMessage]); setQuery("");
     try {
-      const request = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: trimmed }) });
+      const request = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: trimmed }) });
       const contentType = request.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) throw new Error("Founder Copilot is not connected to a compatible API response yet.");
       const body = (await request.json()) as AgentResponse;
