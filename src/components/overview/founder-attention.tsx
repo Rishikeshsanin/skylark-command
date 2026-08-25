@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import type {
   ClientIntelligence,
   FounderAttentionFeed,
@@ -38,6 +41,12 @@ export function FounderAttention({
   currency,
 }: FounderAttentionProps) {
   const resolvedCurrency = feed?.currencyCode ?? currency;
+  const [expanded, setExpanded] = useState(false);
+  const visibleFeedItems = feed
+    ? expanded
+      ? feed.items
+      : feed.items.slice(0, 6)
+    : [];
 
   return (
     <Panel
@@ -47,7 +56,8 @@ export function FounderAttention({
       {feed ? (
         feed.items.length ? (
           <div className="founder-attention-list">
-            {feed.items.slice(0, 10).map((item, index) => (
+            <div className="founder-attention-grid">
+            {visibleFeedItems.map((item, index) => (
               <article
                 className={`founder-attention-item attention-${item.severity.toLowerCase()}`}
                 key={`${item.severity}-${item.entity}-${item.recommendedAttentionCategory}-${index}`}
@@ -80,6 +90,15 @@ export function FounderAttention({
                 </div>
               </article>
             ))}
+            </div>
+            {feed.items.length > 6 && (
+              <div className="list-actions">
+                <span>Showing {formatNumber(visibleFeedItems.length)} of {formatNumber(feed.items.length)} deterministic signals</span>
+                <button className="button button-secondary" type="button" onClick={() => setExpanded((current) => !current)}>
+                  {expanded ? "Show less" : "Show all signals"}
+                </button>
+              </div>
+            )}
             {feed.caveats.length ? (
               <div className="attention-feed-caveats">
                 {feed.caveats.map((caveat) => <p key={caveat}>{caveat}</p>)}

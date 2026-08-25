@@ -2,8 +2,14 @@ import { chromium } from "playwright";
 
 const routes = ["/", "/copilot", "/pipeline", "/operations", "/leadership", "/data-health"];
 const viewports = [
-  { name: "desktop", width: 1440, height: 900, reducedMotion: "no-preference" },
-  { name: "mobile", width: 390, height: 844, reducedMotion: "reduce" },
+  { name: "desktop-1440", width: 1440, height: 900, reducedMotion: "no-preference" },
+  { name: "desktop-1920", width: 1920, height: 1080, reducedMotion: "no-preference" },
+  { name: "laptop", width: 1366, height: 768, reducedMotion: "no-preference" },
+  { name: "tablet-landscape", width: 1024, height: 768, reducedMotion: "no-preference" },
+  { name: "tablet-portrait", width: 768, height: 1024, reducedMotion: "reduce" },
+  { name: "mobile-430", width: 430, height: 932, reducedMotion: "reduce" },
+  { name: "mobile-390", width: 390, height: 844, reducedMotion: "reduce" },
+  { name: "mobile-375", width: 375, height: 667, reducedMotion: "reduce" },
 ];
 const failures = [];
 const browser = await chromium.launch({ headless: true });
@@ -38,6 +44,12 @@ try {
       const focusTag = await page.evaluate(() => document.activeElement?.tagName ?? "NONE");
       if (focusTag === "BODY" || focusTag === "HTML" || focusTag === "NONE") {
         failures.push(`${viewport.name} ${route}: keyboard focus did not enter an interactive element`);
+      }
+
+      const homeLinks = await page.locator('a[aria-label="Skylark Command home"]').count();
+      const visibleHomeLinks = await page.getByRole("link", { name: "Skylark Command home" }).count();
+      if (homeLinks !== 2 || visibleHomeLinks !== 1) {
+        failures.push(`${viewport.name} ${route}: expected desktop/mobile home-brand links with exactly one visible`);
       }
 
       if (route === "/copilot") {

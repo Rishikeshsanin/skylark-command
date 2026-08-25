@@ -1,3 +1,5 @@
+export const DEFAULT_CURRENCY_CODE = "INR" as const;
+
 export function formatNumber(value: number | null | undefined, maximumFractionDigits = 0) {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits }).format(value);
