@@ -174,6 +174,35 @@ jobs:
           grep -q 'RATE_LIMITED' /tmp/rate-final.json
           grep -qi '^retry-after:' /tmp/rate-headers.txt
 
+          # Real UI clarification handoff. With no monday credentials, a valid ranking choice
+          # must advance past planning and reach SOURCE_CONFIGURATION_ERROR (503), not loop to clarification (200).
+          code=$(curl -sS -o /tmp/best-customers.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json' -H 'X-Forwarded-For: 198.51.100.150' --data '{"message":"Who are our best customers?"}')
+          test "$code" = "200"
+          grep -q '"required":true' /tmp/best-customers.json
+          options=(
+            "Highest won value"
+            "Largest active pipeline"
+            "Best project execution"
+            "Combined commercial + operational importance"
+          )
+          ip_suffix=151
+          for option in "${options[@]}"; do
+            python - "$option" <<'PY' >/tmp/ranking-choice.json
+          import json, sys
+          option = sys.argv[1]
+          print(json.dumps({"message": f"What should ‘best customers’ mean for this analysis? Answer: {option}"}))
+          PY
+            code=$(curl -sS -o /tmp/ranking-choice-response.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json' -H "X-Forwarded-For: 198.51.100.$ip_suffix" --data-binary @/tmp/ranking-choice.json)
+            if [ "$code" = "200" ] && grep -q '"required":true' /tmp/ranking-choice-response.json; then
+              echo "Clarification choice looped instead of reaching deterministic ranking: $option"
+              cat /tmp/ranking-choice-response.json
+              exit 1
+            fi
+            test "$code" = "503"
+            grep -q 'SOURCE_CONFIGURATION_ERROR' /tmp/ranking-choice-response.json
+            ip_suffix=$((ip_suffix + 1))
+          done
+
           # Existing RC2 smoke + Agent 5 evaluator-facing browser harness.
           node .github/scripts/agent2-browser-smoke.mjs
           cp ../qa/.github/scripts/agent5-rc2-browser.mjs ./.agent5-rc2-browser.mjs
