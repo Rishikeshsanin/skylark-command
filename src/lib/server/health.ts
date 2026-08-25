@@ -17,7 +17,9 @@ export function getHealthSnapshot(requestId: string): HealthSnapshot {
     mondayTokenConfigured: Boolean(process.env.MONDAY_API_TOKEN),
     dealsBoardConfigured: Boolean(process.env.MONDAY_DEALS_BOARD_ID),
     workOrdersBoardConfigured: Boolean(process.env.MONDAY_WORK_ORDERS_BOARD_ID),
-    aiProviderConfigured: Boolean(process.env.AI_API_KEY),
+    aiProviderConfigured: Boolean(
+      process.env.GEMINI_API_KEY || process.env.AI_API_KEY,
+    ),
   };
 
   const coreConfigured =

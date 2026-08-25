@@ -1,4 +1,10 @@
-import type { DataQualityIssue, Deal, LeadershipBriefData, WorkOrder } from "../../types";
+import type {
+  DataQualityIssue,
+  Deal,
+  LeadershipBriefData,
+  PresentationMetadata,
+  WorkOrder,
+} from "../../types";
 import { buildClientIntelligence, calculateSectorMetrics } from "./cross-board";
 import { buildDataQualityReport } from "./data-quality";
 import { calculatePipelineMetrics, findRiskyDeals, largestDeals } from "./deals";
@@ -9,8 +15,10 @@ export function buildLeadershipBriefData(
   workOrders: WorkOrder[],
   asOfDate: string,
   normalizationIssues: DataQualityIssue[] = [],
-): LeadershipBriefData {
+): LeadershipBriefData & PresentationMetadata {
   const dataQuality = buildDataQualityReport(deals, workOrders, normalizationIssues, asOfDate);
+  const dealRecordsAnalyzed = deals.filter((deal) => !deal.malformed).length;
+  const workOrderRecordsAnalyzed = workOrders.filter((workOrder) => !workOrder.malformed).length;
   return {
     pipeline: calculatePipelineMetrics(deals),
     workOrders: calculateWorkOrderHealth(workOrders, asOfDate),
@@ -21,5 +29,11 @@ export function buildLeadershipBriefData(
       .slice(0, 10),
     sectorMetrics: calculateSectorMetrics(deals, workOrders),
     dataQuality,
+    currencyCode: "INR",
+    provenance: {
+      dealRecordsAnalyzed,
+      workOrderRecordsAnalyzed,
+      totalRecordsAnalyzed: dealRecordsAnalyzed + workOrderRecordsAnalyzed,
+    },
   };
 }

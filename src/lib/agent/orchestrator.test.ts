@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AnalyticsDispatcher } from "./analytics-adapter";
+import type { ExecutiveExplanationProvider } from "./explanation";
 import { orchestrateFounderQuestion } from "./orchestrator";
 
 const source = {
@@ -8,26 +9,47 @@ const source = {
   fetchedAt: "2026-08-25T00:00:00.000Z",
 };
 
+const generatedExplanation = {
+  headline: "Pipeline needs executive review",
+  executiveSummary:
+    "The deterministic pipeline result indicates meaningful commercial exposure and should be reviewed with the supplied caveats.",
+  observations: ["The structured analytics remain authoritative."],
+  risks: [],
+  attentionItems: ["Review the deterministic priority records."],
+  followUpQuestions: ["Would you like a stage-level view?"],
+};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("orchestrateFounderQuestion", () => {
-  it("returns clarification without invoking analytics", async () => {
+  it("returns clarification without invoking analytics or the LLM", async () => {
     const dispatcher: AnalyticsDispatcher = vi.fn(async () => ({
       result: { data: {}, caveats: [] },
       source,
     }));
+    const provider: ExecutiveExplanationProvider = {
+      name: "gemini",
+      model: "test-model",
+      explain: vi.fn(async () => generatedExplanation),
+    };
 
     const response = await orchestrateFounderQuestion(
       "Who are our best customers?",
       dispatcher,
+      provider,
     );
 
     expect(response.ok).toBe(true);
     expect(response.clarification?.required).toBe(true);
     expect(dispatcher).not.toHaveBeenCalled();
+    expect(provider.explain).not.toHaveBeenCalled();
   });
 
-  it("passes deterministic analytics data through without recalculating it", async () => {
+  it("adds model prose without changing deterministic metrics", async () => {
     const deterministicData = {
-      sentinelMetric: 12345,
+      sentinelMetric: 688152293.17,
       nested: { value: 987 },
     };
     const dispatcher: AnalyticsDispatcher = vi.fn(async () => ({
@@ -37,15 +59,80 @@ describe("orchestrateFounderQuestion", () => {
       },
       source,
     }));
+    const provider: ExecutiveExplanationProvider = {
+      name: "gemini",
+      model: "test-model",
+      explain: vi.fn(async () => generatedExplanation),
+    };
 
     const response = await orchestrateFounderQuestion(
       "How is our pipeline looking?",
       dispatcher,
+      provider,
     );
 
     expect(response.ok).toBe(true);
     expect(response.data).toBe(deterministicData);
+    expect(response.data).toEqual({
+      sentinelMetric: 688152293.17,
+      nested: { value: 987 },
+    });
+    expect(response.explanation).toEqual(generatedExplanation);
+    expect(response.answer).toBe(generatedExplanation.executiveSummary);
     expect(response.caveats).toEqual(["Source contains missing values."]);
     expect(response.source).toEqual(source);
+  });
+
+  it("falls back deterministically when no provider is configured", async () => {
+    const deterministicData = { sentinelMetric: 42 };
+    const dispatcher: AnalyticsDispatcher = vi.fn(async () => ({
+      result: { data: deterministicData, caveats: [] },
+      source,
+    }));
+
+    const response = await orchestrateFounderQuestion(
+      "How is our pipeline looking?",
+      dispatcher,
+      null,
+    );
+
+    expect(response.data).toBe(deterministicData);
+    expect(response.explanation?.executiveSummary).toContain(
+      "deterministic analytics",
+    );
+    expect(JSON.stringify(response.explanation)).not.toMatch(/[0-9]/);
+  });
+
+  it("falls back safely and never logs provider secrets", async () => {
+    const dispatcher: AnalyticsDispatcher = vi.fn(async () => ({
+      result: { data: { sentinelMetric: 42 }, caveats: [] },
+      source,
+    }));
+    const provider: ExecutiveExplanationProvider = {
+      name: "gemini",
+      model: "test-model",
+      explain: vi.fn(async () => {
+        throw new Error("provider failed with GEMINI_API_KEY=super-secret-key");
+      }),
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const response = await orchestrateFounderQuestion(
+      "How is our pipeline looking?",
+      dispatcher,
+      provider,
+      "request-safe",
+    );
+
+    expect(response.ok).toBe(true);
+    expect(response.explanation?.executiveSummary).toContain(
+      "external explanation layer was unavailable",
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = warn.mock.calls.map((call) => call.join(" ")).join(" ");
+    expect(logged).toContain("AI_UPSTREAM_ERROR");
+    expect(logged).toContain("request-safe");
+    expect(logged).not.toContain("super-secret-key");
+    expect(logged).not.toContain("GEMINI_API_KEY=");
   });
 });
