@@ -7,6 +7,7 @@ import {
   clientsWithOpenDealsAndActiveWorkOrders,
   dealCloseQuarterMetrics,
   findRiskyDeals,
+  getFounderAttentionFeed,
   getLatestAvailableQuarter,
   getPipelineForCurrentQuarter,
   getPipelineForQuarter,
@@ -277,7 +278,23 @@ export function executePlanAgainstSnapshot(
       result = quarterResult(snapshot, plan);
       break;
 
-    case "work_order_health":
+    case "work_order_health": {
+      if (plan.focus === "attention") {
+        const attention = getFounderAttentionFeed(
+          snapshot.deals,
+          snapshot.workOrders,
+          asOfDate,
+        );
+        result = { data: attention, caveats: attention.caveats };
+        break;
+      }
+      result = {
+        data: calculateWorkOrderHealth(snapshot.workOrders, asOfDate),
+        caveats: [],
+      };
+      break;
+    }
+
     case "receivables":
       result = {
         data: calculateWorkOrderHealth(snapshot.workOrders, asOfDate),
