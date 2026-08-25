@@ -11,7 +11,23 @@ const CUSTOMER_CLARIFICATION_OPTIONS = [
   "Largest active pipeline",
   "Best project execution",
   "Combined commercial + operational importance",
-];
+] as const;
+
+const CUSTOMER_RANKING_FOCUS: Record<
+  (typeof CUSTOMER_CLARIFICATION_OPTIONS)[number],
+  NonNullable<QueryPlan["focus"]>
+> = {
+  "Highest won value": "customer_won_value",
+  "Largest active pipeline": "customer_pipeline",
+  "Best project execution": "customer_execution",
+  "Combined commercial + operational importance": "customer_combined",
+};
+
+const CUSTOMER_ANSWER_PREFIXES = [
+  "Answer: ",
+  "What should ‘best customers’ mean for this analysis? Answer: ",
+  "What should 'best customers' mean for this analysis? Answer: ",
+] as const;
 
 const GENERIC_SECTOR_PREFIXES = new Set([
   "which",
@@ -77,6 +93,34 @@ function inferSector(text: string): string | undefined {
   return normalizeSectorCandidate(singleWord?.[1]);
 }
 
+function controlledCustomerRankingFocus(
+  text: string,
+): NonNullable<QueryPlan["focus"]> | undefined {
+  const candidates = [
+    text,
+    ...CUSTOMER_ANSWER_PREFIXES.flatMap((prefix) =>
+      text.toLowerCase().startsWith(prefix.toLowerCase())
+        ? [text.slice(prefix.length)]
+        : [],
+    ),
+  ];
+
+  for (const candidate of candidates) {
+    const matchedOption = CUSTOMER_CLARIFICATION_OPTIONS.find(
+      (option) => option.toLowerCase() === candidate.toLowerCase(),
+    );
+    if (matchedOption) return CUSTOMER_RANKING_FOCUS[matchedOption];
+  }
+
+  return undefined;
+}
+
+function asksForSectorOpenPipelineRanking(text: string): boolean {
+  return /^(?:which|what) sector has the (?:largest|biggest|most) (?:open opportunit(?:y|ies)|pipeline)\??$/i.test(
+    text,
+  );
+}
+
 function makePlan(
   intent: QueryPlan["intent"],
   question: string,
@@ -103,7 +147,6 @@ function makePlan(
 
 export function planFounderQuestion(question: string): PlannerDecision {
   const normalized = question.trim().replace(/\s+/g, " ");
-  const lower = normalized.toLowerCase();
 
   if (!normalized) {
     return clarification(
@@ -112,44 +155,21 @@ export function planFounderQuestion(question: string): PlannerDecision {
     );
   }
 
+  const controlledRankingFocus = controlledCustomerRankingFocus(normalized);
+  if (controlledRankingFocus) {
+    return makePlan(
+      "client_cross_board",
+      normalized,
+      { focus: controlledRankingFocus },
+      1,
+    );
+  }
+
   if (/\b(best|top)\s+(customers?|clients?)\b/i.test(normalized)) {
     return clarification(
       "What should ‘best customers’ mean for this analysis?",
       "Customer quality can mean different commercial or operational outcomes, so the system will not invent a ranking definition.",
-      CUSTOMER_CLARIFICATION_OPTIONS,
-    );
-  }
-
-  if (lower === "highest won value") {
-    return makePlan(
-      "client_cross_board",
-      normalized,
-      { focus: "customer_won_value" },
-      1,
-    );
-  }
-  if (lower === "largest active pipeline") {
-    return makePlan(
-      "client_cross_board",
-      normalized,
-      { focus: "customer_pipeline" },
-      1,
-    );
-  }
-  if (lower === "best project execution") {
-    return makePlan(
-      "client_cross_board",
-      normalized,
-      { focus: "customer_execution" },
-      1,
-    );
-  }
-  if (lower.includes("combined commercial") && lower.includes("operational")) {
-    return makePlan(
-      "client_cross_board",
-      normalized,
-      { focus: "customer_combined" },
-      1,
+      [...CUSTOMER_CLARIFICATION_OPTIONS],
     );
   }
 
@@ -207,6 +227,15 @@ export function planFounderQuestion(question: string): PlannerDecision {
 
   if (/\b(how much.*won|won value|won revenue|revenue.*won|closed won)\b/i.test(normalized)) {
     return makePlan("won_value", normalized);
+  }
+
+  if (asksForSectorOpenPipelineRanking(normalized)) {
+    return makePlan(
+      "pipeline_by_sector",
+      normalized,
+      { focus: "sector_open_pipeline" },
+      1,
+    );
   }
 
   const sector = inferSector(normalized);

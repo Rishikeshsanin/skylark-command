@@ -47,6 +47,7 @@ export const queryFocusSchema = z.enum([
   "customer_pipeline",
   "customer_execution",
   "customer_combined",
+  "sector_open_pipeline",
 ]);
 
 export const queryPlanSchema = z

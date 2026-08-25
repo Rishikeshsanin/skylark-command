@@ -73,30 +73,87 @@ describe("Agent 1 founder-intelligence adapter wiring", () => {
     ]);
   });
 
-  it("uses Agent 1 deterministic customer-ranking exports after clarification", () => {
+  it.each([
+    ["customer_won_value", "won_value"],
+    ["customer_pipeline", "open_pipeline"],
+    ["customer_execution", "work_order_execution_health"],
+    ["customer_combined", "combined_importance"],
+  ] as const)(
+    "dispatches %s to the canonical Agent 1 customer ranking",
+    (focus, expectedRankingType) => {
+      const result = executePlanAgainstSnapshot(
+        {
+          intent: "client_cross_board",
+          focus,
+          confidence: 1,
+        },
+        snapshot(
+          [
+            makeDeal({
+              mondayItemId: "won",
+              normalizedClientKey: "COMPANY001",
+              status: "Won",
+              value: 100,
+            }),
+            makeDeal({
+              mondayItemId: "open",
+              normalizedClientKey: "COMPANY001",
+              status: "Open",
+              value: 200,
+            }),
+          ],
+          [
+            makeWorkOrder({
+              normalizedClientKey: "COMPANY001",
+              executionStatus: "Ongoing",
+              probableEndDate: "2026-12-01",
+              amountInclGst: 118,
+              amountReceivable: 20,
+            }),
+          ],
+        ),
+      );
+
+      const data = result.data as {
+        rankingType: string;
+        entries: Array<{ normalizedClientKey: string }>;
+      };
+      expect(data.rankingType).toBe(expectedRankingType);
+      expect(data.entries[0]?.normalizedClientKey).toBe("COMPANY001");
+    },
+  );
+
+  it("orders sector results by Agent 1 open-pipeline values when planner requests that focus", () => {
     const result = executePlanAgainstSnapshot(
       {
-        intent: "client_cross_board",
-        focus: "customer_combined",
+        intent: "pipeline_by_sector",
+        focus: "sector_open_pipeline",
         confidence: 1,
       },
       snapshot(
-        [makeDeal({ normalizedClientKey: "COMPANY001", value: 100 })],
+        [
+          makeDeal({ sector: "Mining", status: "Open", value: 1000 }),
+          makeDeal({
+            mondayItemId: "power-deal",
+            sector: "Powerline",
+            status: "Open",
+            value: 100,
+          }),
+        ],
         [
           makeWorkOrder({
-            normalizedClientKey: "COMPANY001",
-            amountInclGst: 118,
-            amountReceivable: 20,
+            sector: "Powerline",
+            amountInclGst: 10000,
           }),
         ],
       ),
     );
 
-    const data = result.data as {
-      rankingType: string;
-      entries: Array<{ normalizedClientKey: string }>;
-    };
-    expect(data.rankingType).toBe("combined_importance");
-    expect(data.entries[0]?.normalizedClientKey).toBe("COMPANY001");
+    const data = result.data as Array<{
+      sector: string;
+      openPipelineValue: number;
+    }>;
+    expect(data.map((row) => row.sector)).toEqual(["Mining", "Powerline"]);
+    expect(data[0]?.openPipelineValue).toBe(1000);
   });
 });

@@ -8,6 +8,22 @@ function requirePlan(question: string) {
   return decision.plan!;
 }
 
+const customerRankingCases = [
+  ["Highest won value", "customer_won_value"],
+  ["Largest active pipeline", "customer_pipeline"],
+  ["Best project execution", "customer_execution"],
+  [
+    "Combined commercial + operational importance",
+    "customer_combined",
+  ],
+] as const;
+
+const sectorOpenPipelineQuestions = [
+  "Which sector has the largest open opportunity?",
+  "Which sector has the biggest pipeline?",
+  "What sector has the most open opportunity?",
+] as const;
+
 describe("planFounderQuestion", () => {
   it("maps a pipeline question to a bounded intent", () => {
     expect(requirePlan("How is our pipeline looking?").intent).toBe(
@@ -46,6 +62,52 @@ describe("planFounderQuestion", () => {
       "Combined commercial + operational importance",
     ]);
   });
+
+  it.each(customerRankingCases)(
+    "accepts exact controlled customer ranking option %s",
+    (option, focus) => {
+      const plan = requirePlan(option);
+      expect(plan.intent).toBe("client_cross_board");
+      expect(plan.focus).toBe(focus);
+      expect(plan.confidence).toBe(1);
+    },
+  );
+
+  it.each(customerRankingCases)(
+    "accepts Answer-prefixed controlled customer ranking option %s",
+    (option, focus) => {
+      const plan = requirePlan(`Answer: ${option}`);
+      expect(plan.intent).toBe("client_cross_board");
+      expect(plan.focus).toBe(focus);
+    },
+  );
+
+  it.each(customerRankingCases)(
+    "accepts full UI composite controlled customer ranking option %s",
+    (option, focus) => {
+      const plan = requirePlan(
+        `What should ‘best customers’ mean for this analysis? Answer: ${option}`,
+      );
+      expect(plan.intent).toBe("client_cross_board");
+      expect(plan.focus).toBe(focus);
+    },
+  );
+
+  it("does not fuzzy-match near-miss customer ranking answers", () => {
+    const decision = planFounderQuestion("Answer: highest won values please");
+    expect(decision.plan).toBeUndefined();
+    expect(decision.clarification?.required).toBe(true);
+  });
+
+  it.each(sectorOpenPipelineQuestions)(
+    "signals open-pipeline sector ranking semantics for %s",
+    (question) => {
+      const plan = requirePlan(question);
+      expect(plan.intent).toBe("pipeline_by_sector");
+      expect(plan.focus).toBe("sector_open_pipeline");
+      expect(plan.sector).toBeUndefined();
+    },
+  );
 
   it("does not interpret prompt-injection prose as a privileged instruction", () => {
     const decision = planFounderQuestion(

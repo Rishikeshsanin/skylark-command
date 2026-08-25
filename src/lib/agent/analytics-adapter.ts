@@ -140,6 +140,16 @@ function pipelinePeriodResult(
   return null;
 }
 
+function rankByOpenPipeline<T extends { sector: string; openPipelineValue: number }>(
+  metrics: T[],
+): T[] {
+  return [...metrics].sort(
+    (a, b) =>
+      b.openPipelineValue - a.openPipelineValue ||
+      a.sector.localeCompare(b.sector),
+  );
+}
+
 function filterSectorPeriod(
   data: PeriodSectorResult,
   sector: string | undefined,
@@ -175,6 +185,27 @@ function filterSectorPeriod(
   };
 }
 
+function applySectorFocus(
+  data: PeriodSectorResult,
+  focus: QueryPlan["focus"],
+): PeriodSectorResult {
+  if (focus !== "sector_open_pipeline") return data;
+
+  const rankSnapshot = (snapshot: PeriodSectorResult["result"]) =>
+    snapshot
+      ? {
+          ...snapshot,
+          sectors: rankByOpenPipeline(snapshot.sectors),
+        }
+      : null;
+
+  return {
+    ...data,
+    result: rankSnapshot(data.result),
+    latestAvailableResult: rankSnapshot(data.latestAvailableResult),
+  };
+}
+
 function sectorPeriodResult(
   snapshot: BusinessDataSnapshot,
   plan: QueryPlan,
@@ -203,7 +234,10 @@ function sectorPeriodResult(
   }
 
   if (!periodResult) return null;
-  const selected = filterSectorPeriod(periodResult, plan.sector);
+  const selected = applySectorFocus(
+    filterSectorPeriod(periodResult, plan.sector),
+    plan.focus,
+  );
   return { data: selected, caveats: selected.caveats };
 }
 
@@ -253,10 +287,14 @@ export function executePlanAgainstSnapshot(
               metric.sector.toLowerCase() === plan.sector?.toLowerCase(),
           )
         : metrics;
+      const focused =
+        plan.focus === "sector_open_pipeline"
+          ? rankByOpenPipeline(selected)
+          : selected;
       result = {
-        data: selected,
+        data: focused,
         caveats:
-          plan.sector && selected.length === 0
+          plan.sector && focused.length === 0
             ? [`No normalized records matched sector “${plan.sector}”.`]
             : [],
       };
