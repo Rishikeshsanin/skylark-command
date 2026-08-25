@@ -7,14 +7,27 @@ import {
   clientsWithOpenDealsAndActiveWorkOrders,
   dealCloseQuarterMetrics,
   findRiskyDeals,
+  getLatestAvailableQuarter,
+  getPipelineForCurrentQuarter,
+  getPipelineForQuarter,
+  getSectorPerformanceForCurrentQuarter,
+  getSectorPerformanceForQuarter,
   pipelineByStage,
+  rankCustomersByCombinedImportance,
+  rankCustomersByOpenPipeline,
+  rankCustomersByWonValue,
+  rankCustomersByWorkOrderExecutionHealth,
 } from "@/lib/analytics";
 import {
   loadBusinessData,
   type BusinessDataSnapshot,
 } from "@/lib/business-data";
 import { PublicApiError } from "@/lib/server/errors";
-import type { AgentResponse, AnalyticsResult } from "@/types";
+import type {
+  AgentResponse,
+  AnalyticsResult,
+  PeriodSectorResult,
+} from "@/types";
 import type { QueryPlan } from "./schemas";
 
 export interface AnalyticsExecution {
@@ -47,8 +60,14 @@ function snapshotSource(
 }
 
 function ensureSupportedPeriodScope(plan: QueryPlan): void {
-  const isTimeScoped = Boolean(plan.period || plan.quarter);
+  const isTimeScoped = Boolean(
+    plan.quarter || (plan.period && plan.period !== "all_time"),
+  );
   if (!isTimeScoped || plan.intent === "quarter_analysis") return;
+
+  const agentOneQuarterScope =
+    plan.intent === "pipeline_overview" || plan.intent === "pipeline_by_sector";
+  if (agentOneQuarterScope && plan.period !== "current_year") return;
 
   throw new PublicApiError(
     422,
@@ -91,6 +110,102 @@ function quarterResult(
   return { data: selected, caveats };
 }
 
+function pipelinePeriodResult(
+  snapshot: BusinessDataSnapshot,
+  plan: QueryPlan,
+  asOfDate: string,
+): AnalyticsResult<unknown> | null {
+  if (plan.quarter) {
+    const data = getPipelineForQuarter(snapshot.deals, plan.quarter);
+    return { data, caveats: data.caveats };
+  }
+  if (plan.period === "current_quarter") {
+    const data = getPipelineForCurrentQuarter(snapshot.deals, asOfDate);
+    return { data, caveats: data.caveats };
+  }
+  if (plan.period === "latest_available") {
+    const latest = getLatestAvailableQuarter(snapshot.deals, true);
+    if (!latest) {
+      return {
+        data: null,
+        caveats: [
+          "No usable dated open-pipeline period is available; zero performance is not reported.",
+        ],
+      };
+    }
+    const data = getPipelineForQuarter(snapshot.deals, latest);
+    return { data, caveats: data.caveats };
+  }
+  return null;
+}
+
+function filterSectorPeriod(
+  data: PeriodSectorResult,
+  sector: string | undefined,
+): PeriodSectorResult {
+  if (!sector) return data;
+  const normalizedSector = sector.toLowerCase();
+  const filterSnapshot = (snapshot: PeriodSectorResult["result"]) =>
+    snapshot
+      ? {
+          ...snapshot,
+          sectors: snapshot.sectors.filter(
+            (metric) => metric.sector.toLowerCase() === normalizedSector,
+          ),
+        }
+      : null;
+
+  const result = filterSnapshot(data.result);
+  const latestAvailableResult = filterSnapshot(data.latestAvailableResult);
+  const hasSectorMatch = Boolean(
+    result?.sectors.length || latestAvailableResult?.sectors.length,
+  );
+
+  return {
+    ...data,
+    result,
+    latestAvailableResult,
+    caveats: [
+      ...data.caveats,
+      ...(hasSectorMatch
+        ? []
+        : [`No deterministic period records matched sector “${sector}”.`]),
+    ],
+  };
+}
+
+function sectorPeriodResult(
+  snapshot: BusinessDataSnapshot,
+  plan: QueryPlan,
+  asOfDate: string,
+): AnalyticsResult<unknown> | null {
+  let periodResult: PeriodSectorResult | null = null;
+
+  if (plan.quarter) {
+    periodResult = getSectorPerformanceForQuarter(snapshot.deals, plan.quarter);
+  } else if (plan.period === "current_quarter") {
+    periodResult = getSectorPerformanceForCurrentQuarter(
+      snapshot.deals,
+      asOfDate,
+    );
+  } else if (plan.period === "latest_available") {
+    const latest = getLatestAvailableQuarter(snapshot.deals, false);
+    if (!latest) {
+      return {
+        data: null,
+        caveats: [
+          "No usable dated sector-performance period is available; zero performance is not reported.",
+        ],
+      };
+    }
+    periodResult = getSectorPerformanceForQuarter(snapshot.deals, latest);
+  }
+
+  if (!periodResult) return null;
+  const selected = filterSectorPeriod(periodResult, plan.sector);
+  return { data: selected, caveats: selected.caveats };
+}
+
 export function executePlanAgainstSnapshot(
   plan: QueryPlan,
   snapshot: BusinessDataSnapshot,
@@ -107,12 +222,26 @@ export function executePlanAgainstSnapshot(
   let result: AnalyticsResult<unknown>;
 
   switch (plan.intent) {
-    case "pipeline_overview":
+    case "pipeline_overview": {
+      const periodResult = pipelinePeriodResult(snapshot, plan, asOfDate);
+      result = periodResult ?? {
+        data: calculatePipelineMetrics(snapshot.deals),
+        caveats: [],
+      };
+      break;
+    }
+
     case "won_value":
       result = { data: calculatePipelineMetrics(snapshot.deals), caveats: [] };
       break;
 
     case "pipeline_by_sector": {
+      const scoped = sectorPeriodResult(snapshot, plan, asOfDate);
+      if (scoped) {
+        result = scoped;
+        break;
+      }
+
       const metrics = calculateSectorMetrics(
         snapshot.deals,
         snapshot.workOrders,
@@ -156,19 +285,35 @@ export function executePlanAgainstSnapshot(
       };
       break;
 
-    case "client_cross_board":
-      if (
-        plan.focus === "customer_won_value" ||
-        plan.focus === "customer_pipeline" ||
-        plan.focus === "customer_execution" ||
-        plan.focus === "customer_combined"
-      ) {
-        throw new PublicApiError(
-          422,
-          "CUSTOMER_RANKING_NOT_WIRED",
-          "That customer ranking definition is not yet exposed by deterministic analytics.",
-        );
+    case "client_cross_board": {
+      let ranking;
+      switch (plan.focus) {
+        case "customer_won_value":
+          ranking = rankCustomersByWonValue(snapshot.deals, asOfDate);
+          break;
+        case "customer_pipeline":
+          ranking = rankCustomersByOpenPipeline(snapshot.deals, asOfDate);
+          break;
+        case "customer_execution":
+          ranking = rankCustomersByWorkOrderExecutionHealth(
+            snapshot.workOrders,
+            asOfDate,
+          );
+          break;
+        case "customer_combined":
+          ranking = rankCustomersByCombinedImportance(
+            snapshot.deals,
+            snapshot.workOrders,
+            asOfDate,
+          );
+          break;
       }
+
+      if (ranking) {
+        result = { data: ranking, caveats: ranking.caveats };
+        break;
+      }
+
       result = {
         data: clientsWithOpenDealsAndActiveWorkOrders(
           snapshot.deals,
@@ -178,6 +323,7 @@ export function executePlanAgainstSnapshot(
         caveats: [],
       };
       break;
+    }
 
     case "data_health":
       result = { data: dataQuality, caveats: [] };
