@@ -1,0 +1,38 @@
+name: Agent 1 Data BI CI
+
+on:
+  push:
+    branches:
+      - agent-1-data-bi
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+        env:
+          MONDAY_API_TOKEN: ci-placeholder
+          MONDAY_DEALS_BOARD_ID: "1"
+          MONDAY_WORK_ORDERS_BOARD_ID: "2"
+          AI_API_KEY: ci-placeholder

@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "npm run test:agent1 && npm run test:agent3",
+    "test:agent1": "tsx --test tests/*.test.ts",
+    "test:agent3": "vitest run"
   },
   "dependencies": {
     "next": "^16.0.0",
@@ -23,6 +25,7 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.0.0",
     "tailwindcss": "^4.1.0",
+    "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.4"
   }
