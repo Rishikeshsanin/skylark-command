@@ -1,20 +1,27 @@
 "use client";
 
 type DataStateProps = {
-  state: "loading" | "empty" | "error";
+  state: "loading" | "empty" | "stale" | "error";
   title?: string;
   description?: string;
   onRetryLabel?: string;
 };
 
-export function DataState({ state, title, description, onRetryLabel = "Retry" }: DataStateProps) {
+export function DataState({
+  state,
+  title,
+  description,
+  onRetryLabel = "Retry",
+}: DataStateProps) {
   if (state === "loading") {
     return (
       <div className="state-card" role="status" aria-live="polite">
         <span className="state-icon state-icon-loading" aria-hidden="true" />
         <div>
           <p className="state-title">{title ?? "Loading live intelligence"}</p>
-          <p className="state-description">{description ?? "Preparing the latest view from connected data sources."}</p>
+          <p className="state-description">
+            {description ?? "Preparing the latest view from connected data sources."}
+          </p>
         </div>
         <div className="skeleton-stack" aria-hidden="true">
           <span className="skeleton-line skeleton-line-wide" />
@@ -25,15 +32,36 @@ export function DataState({ state, title, description, onRetryLabel = "Retry" }:
     );
   }
 
+  if (state === "stale") {
+    return (
+      <div className="state-card state-card-stale" role="status" aria-live="polite">
+        <span className="state-icon" aria-hidden="true">↻</span>
+        <div>
+          <p className="state-title">{title ?? "This view may be stale"}</p>
+          <p className="state-description">
+            {description ?? "The last usable result is still visible, but its source freshness needs verification before action."}
+          </p>
+        </div>
+        <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>
+          Refresh
+        </button>
+      </div>
+    );
+  }
+
   if (state === "error") {
     return (
       <div className="state-card" role="alert">
         <span className="state-icon state-icon-error" aria-hidden="true">!</span>
         <div>
           <p className="state-title">{title ?? "Unable to load this view"}</p>
-          <p className="state-description">{description ?? "The data service did not return a usable response. No values have been inferred."}</p>
+          <p className="state-description">
+            {description ?? "The data service did not return a usable response. No values have been inferred."}
+          </p>
         </div>
-        <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>{onRetryLabel}</button>
+        <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>
+          {onRetryLabel}
+        </button>
       </div>
     );
   }
@@ -43,7 +71,9 @@ export function DataState({ state, title, description, onRetryLabel = "Retry" }:
       <span className="state-icon" aria-hidden="true">—</span>
       <div>
         <p className="state-title">{title ?? "Waiting for live data"}</p>
-        <p className="state-description">{description ?? "This screen is connected to canonical BI contracts and will populate when its backend endpoint is available."}</p>
+        <p className="state-description">
+          {description ?? "This screen is connected to canonical BI contracts and will populate when its backend endpoint is available."}
+        </p>
       </div>
     </div>
   );
