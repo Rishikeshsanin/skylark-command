@@ -11,6 +11,5 @@ export default async function LeadershipPage() {
     return <div className="page"><PageHeader eyebrow="Leadership Brief" title="Decision-ready business brief" description="Presentation-ready commercial, operational, cash, attention, and data-caveat views." /><LeadershipBrief error={result.error} /></div>;
   }
   const data = result.data;
-  const recordsAnalyzed = data.snapshot.deals.length + data.snapshot.workOrders.length;
-  return <div className="page"><PageHeader eyebrow="Leadership Brief" title="Decision-ready business brief" description="Presentation-ready commercial, operational, cash, attention, and data-caveat views." actions={<SourceStatus fetchedAt={data.snapshot.source.fetchedAt} boardNames={[data.snapshot.source.dealsBoardName, data.snapshot.source.workOrdersBoardName]} recordsAnalyzed={recordsAnalyzed} />} /><LeadershipBrief brief={data.brief} /></div>;
+  return <div className="page"><PageHeader eyebrow="Leadership Brief" title="Decision-ready business brief" description="Presentation-ready commercial, operational, cash, attention, and data-caveat views." actions={<SourceStatus fetchedAt={data.snapshot.source.fetchedAt} boardNames={[data.snapshot.source.dealsBoardName, data.snapshot.source.workOrdersBoardName]} recordsAnalyzed={data.brief.provenance.totalRecordsAnalyzed} />} /><LeadershipBrief brief={data.brief} currency={data.brief.currencyCode} /></div>;
 }

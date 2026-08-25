@@ -1,19 +1,17 @@
 import type {
   ClientIntelligence,
   DataQualityReport,
+  FounderAttentionFeed,
   PipelineMetrics,
   SectorMetrics,
   WorkOrderHealth,
-} from "@/types/domain";
+} from "@/types";
 import { DataState } from "@/components/ui/data-state";
 import { DistributionBars } from "@/components/ui/distribution-bars";
 import { formatAmount, formatNumber } from "@/components/ui/formatters";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Panel } from "@/components/ui/panel";
-import {
-  FounderAttention,
-  type FounderAttentionItem,
-} from "./founder-attention";
+import { FounderAttention } from "./founder-attention";
 
 type OverviewDashboardProps = {
   pipeline?: PipelineMetrics | null;
@@ -21,7 +19,7 @@ type OverviewDashboardProps = {
   sectors?: SectorMetrics[] | null;
   clients?: ClientIntelligence[] | null;
   dataQuality?: DataQualityReport | null;
-  attentionItems?: FounderAttentionItem[] | null;
+  attentionFeed?: FounderAttentionFeed | null;
   currency?: string;
   loading?: boolean;
   error?: string | null;
@@ -33,7 +31,7 @@ export function OverviewDashboard({
   sectors,
   clients,
   dataQuality,
-  attentionItems,
+  attentionFeed,
   currency,
   loading = false,
   error = null,
@@ -45,11 +43,12 @@ export function OverviewDashboard({
       <DataState
         state="empty"
         title="Executive metrics are integration-ready"
-        description="The Overview consumes canonical pipeline, operations, sector, client, data-quality, and optional Founder Attention data without inventing business metrics."
+        description="The Overview consumes canonical pipeline, operations, sector, client, data-quality, and Founder Attention data without inventing business metrics."
       />
     );
   }
 
+  const resolvedCurrency = attentionFeed?.currencyCode ?? currency;
   const exposedClients =
     clients?.filter((client) => client.hasCombinedCommercialOperationalRisk) ?? [];
   const sectorRows = (sectors ?? [])
@@ -65,12 +64,12 @@ export function OverviewDashboard({
       <div className="metric-grid metric-grid-six executive-metric-grid">
         <MetricCard
           label="Open pipeline"
-          value={formatAmount(pipeline.openPipelineValue, currency)}
+          value={formatAmount(pipeline.openPipelineValue, resolvedCurrency)}
           hint={valueCoverage}
         />
         <MetricCard
           label="Won value"
-          value={formatAmount(pipeline.wonValue, currency)}
+          value={formatAmount(pipeline.wonValue, resolvedCurrency)}
           hint={`${formatNumber(pipeline.wonDeals)} won deals`}
           tone="positive"
         />
@@ -87,7 +86,7 @@ export function OverviewDashboard({
         />
         <MetricCard
           label="Receivables"
-          value={formatAmount(workOrders.receivables, currency)}
+          value={formatAmount(workOrders.receivables, resolvedCurrency)}
           hint={`${formatNumber(workOrders.unknownReceivableCount)} unknown receivable values`}
         />
         <MetricCard
@@ -108,12 +107,12 @@ export function OverviewDashboard({
           <strong>{valueCoverage}</strong>
         </div>
         <div>
-          <span>Missing open-deal values</span>
-          <strong>{formatNumber(pipeline.unknownOpenValueDeals)}</strong>
+          <span>Records analyzed</span>
+          <strong>{attentionFeed ? formatNumber(attentionFeed.provenance.totalRecordsAnalyzed) : "—"}</strong>
         </div>
         <div>
-          <span>Unknown Work Order amounts</span>
-          <strong>{formatNumber(workOrders.unknownAmountCount)}</strong>
+          <span>Missing open-deal values</span>
+          <strong>{formatNumber(pipeline.unknownOpenValueDeals)}</strong>
         </div>
       </div>
 
@@ -123,7 +122,7 @@ export function OverviewDashboard({
             items={sectorRows.map((sector) => ({
               label: sector.sector || "Unmapped",
               value: sector.openPipelineValue,
-              secondary: formatAmount(sector.openPipelineValue, currency),
+              secondary: formatAmount(sector.openPipelineValue, resolvedCurrency),
             }))}
             emptyLabel="No sector metrics available."
           />
@@ -134,15 +133,15 @@ export function OverviewDashboard({
             <div><span>Not started</span><strong>{formatNumber(workOrders.notStartedWorkOrders)}</strong></div>
             <div><span>Delayed</span><strong>{formatNumber(workOrders.delayedWorkOrders)}</strong></div>
             <div><span>Paused</span><strong>{formatNumber(workOrders.pausedWorkOrders)}</strong></div>
-            <div><span>Amount to be billed</span><strong>{formatAmount(workOrders.amountToBeBilledInclGst, currency)}</strong></div>
+            <div><span>Amount to be billed</span><strong>{formatAmount(workOrders.amountToBeBilledInclGst, resolvedCurrency)}</strong></div>
           </div>
         </Panel>
       </div>
 
       <FounderAttention
-        items={attentionItems}
+        feed={attentionFeed}
         fallbackClients={exposedClients}
-        currency={currency}
+        currency={resolvedCurrency}
       />
     </div>
   );

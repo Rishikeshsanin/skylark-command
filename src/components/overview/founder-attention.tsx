@@ -1,61 +1,90 @@
-import type { ClientIntelligence } from "@/types/domain";
+import type {
+  ClientIntelligence,
+  FounderAttentionFeed,
+  FounderAttentionItem,
+} from "@/types";
 import { formatAmount, formatNumber } from "@/components/ui/formatters";
 import { Panel } from "@/components/ui/panel";
 import { StatusPill } from "@/components/ui/status-pill";
 
-export type FounderAttentionItem = {
-  id: string;
-  severity: "high" | "medium";
-  entity: string;
-  entityType?: string;
-  reason: string;
-  evidence?: string[];
-  caveat?: string;
-};
-
 type FounderAttentionProps = {
-  items?: FounderAttentionItem[] | null;
+  feed?: FounderAttentionFeed | null;
   fallbackClients?: ClientIntelligence[];
   currency?: string;
 };
 
+function formatEvidenceValue(
+  key: string,
+  value: FounderAttentionItem["evidenceMetrics"][string],
+  currencyCode?: string,
+) {
+  if (value === null) return "Unavailable";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string") return value;
+  const monetary = /value|amount|receivable|pipeline|exposure/i.test(key);
+  return monetary ? formatAmount(value, currencyCode) : formatNumber(value, 1);
+}
+
+function labelize(key: string) {
+  return key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/_/g, " ")
+    .replace(/^./, (char) => char.toUpperCase());
+}
+
 export function FounderAttention({
-  items,
+  feed,
   fallbackClients = [],
   currency,
 }: FounderAttentionProps) {
-  const hasCanonicalAttention = Array.isArray(items);
+  const resolvedCurrency = feed?.currencyCode ?? currency;
 
   return (
     <Panel
       title="What needs attention"
-      description="Leadership-priority signals. Severity is shown only when supplied by a canonical attention contract."
+      description="Rule-based founder attention signals from canonical deterministic analytics."
     >
-      {hasCanonicalAttention ? (
-        items.length ? (
+      {feed ? (
+        feed.items.length ? (
           <div className="founder-attention-list">
-            {items.map((item) => (
-              <article className={`founder-attention-item attention-${item.severity}`} key={item.id}>
+            {feed.items.slice(0, 10).map((item, index) => (
+              <article
+                className={`founder-attention-item attention-${item.severity.toLowerCase()}`}
+                key={`${item.severity}-${item.entity}-${item.recommendedAttentionCategory}-${index}`}
+              >
                 <div className="attention-rank">
-                  <StatusPill tone={item.severity === "high" ? "critical" : "warning"}>
-                    {item.severity.toUpperCase()}
+                  <StatusPill tone={item.severity === "HIGH" ? "critical" : "warning"}>
+                    {item.severity}
                   </StatusPill>
                 </div>
                 <div className="attention-body">
                   <div className="attention-heading">
                     <strong>{item.entity}</strong>
-                    {item.entityType ? <span>{item.entityType}</span> : null}
+                    <span>{item.client ?? item.relevantSource.replace("_", " ")}</span>
                   </div>
+                  <h3>{item.title}</h3>
                   <p>{item.reason}</p>
-                  {item.evidence?.length ? (
-                    <ul className="attention-evidence">
-                      {item.evidence.map((evidence) => <li key={evidence}>{evidence}</li>)}
-                    </ul>
+                  {Object.keys(item.evidenceMetrics).length ? (
+                    <dl className="attention-metrics">
+                      {Object.entries(item.evidenceMetrics).map(([key, value]) => (
+                        <div key={key}>
+                          <dt>{labelize(key)}</dt>
+                          <dd>{formatEvidenceValue(key, value, resolvedCurrency)}</dd>
+                        </div>
+                      ))}
+                    </dl>
                   ) : null}
-                  {item.caveat ? <p className="attention-caveat">Caveat: {item.caveat}</p> : null}
+                  {item.dataQualityCaveat ? (
+                    <p className="attention-caveat">Caveat: {item.dataQualityCaveat}</p>
+                  ) : null}
                 </div>
               </article>
             ))}
+            {feed.caveats.length ? (
+              <div className="attention-feed-caveats">
+                {feed.caveats.map((caveat) => <p key={caveat}>{caveat}</p>)}
+              </div>
+            ) : null}
           </div>
         ) : (
           <p className="muted-copy">No canonical Founder Attention items are currently reported.</p>
@@ -63,8 +92,8 @@ export function FounderAttention({
       ) : (
         <div className="attention-unranked">
           <div className="attention-contract-note">
-            <strong>Severity ranking is contract-ready.</strong>
-            <span>No HIGH/MEDIUM level is inferred by the UI until canonical Founder Attention data is supplied.</span>
+            <strong>Founder Attention feed unavailable.</strong>
+            <span>No HIGH/MEDIUM level is inferred by the UI.</span>
           </div>
           {fallbackClients.length ? (
             <div className="compact-list">
