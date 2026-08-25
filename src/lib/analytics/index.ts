@@ -1,4 +1,6 @@
+export * from "./change-intelligence";
 export * from "./cross-board";
+export * from "./customer-360";
 export * from "./data-quality";
 export * from "./deals";
 export * from "./founder-attention";
