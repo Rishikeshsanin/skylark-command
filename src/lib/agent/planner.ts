@@ -139,7 +139,6 @@ function asksForLargestOpenSector(normalized: string): boolean {
 
 export function planFounderQuestion(question: string): PlannerDecision {
   const normalized = question.trim().replace(/\s+/g, " ");
-  const lower = normalized.toLowerCase();
 
   if (!normalized) {
     return clarification(
