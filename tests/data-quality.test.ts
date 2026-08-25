@@ -4,7 +4,7 @@ import test from "node:test";
 import { buildDataQualityReport, buildLeadershipBriefData } from "../src/lib/analytics/index";
 import { makeDeal, makeWorkOrder } from "./fixtures";
 
-test("reports unmapped clients, malformed rows, stale dates, and duplicate serials", () => {
+test("reports unique unmapped clients, malformed rows, stale dates, and duplicate serials", () => {
   const deals = [
     makeDeal({ mondayItemId: "d1", normalizedClientKey: "COMPANY001", tentativeCloseDate: "2026-01-01" }),
     makeDeal({ mondayItemId: "d2", malformed: true }),
@@ -16,7 +16,9 @@ test("reports unmapped clients, malformed rows, stale dates, and duplicate seria
 
   const report = buildDataQualityReport(deals, workOrders, [], "2026-08-25");
   assert.equal(report.malformedDeals, 1);
-  assert.equal(report.unmappedWorkOrderClients, 2);
+  assert.equal(report.unmappedWorkOrderClients, 1);
+  assert.deepEqual(report.unmappedWorkOrderClientKeys, ["COMPANY999"]);
+  assert.equal(report.issues.filter((issue) => issue.code === "unmapped_client").length, 2);
   assert.ok(report.issues.some((issue) => issue.code === "stale_close_date"));
   assert.ok(report.issues.some((issue) => issue.code === "duplicate_serial_number"));
 });
