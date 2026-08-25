@@ -1,132 +1,165 @@
 # Skylark Command
 
-Executive business intelligence for live monday.com sales and operations data, with deterministic analytics and a founder-facing copilot.
+Skylark Command is a founder-facing business intelligence control room for live monday.com Deals and Work Orders data. It combines deterministic analytics, an executive dashboard suite, and a secured Founder Copilot whose AI layer may explain results but never owns the business arithmetic.
 
-> **Release status:** active multi-agent integration. Core BI/data access and the secured `/api/chat` backend are present in the current backend baseline; the product UI exists on `agent-2-product-ui` and must be merged and validated on the integration branch before any production deployment. This repository must not be presented as production-deployed until that release gate is complete.
+> **Release status:** RC2 integration candidate on `agent-4-integration`. This repository has **not** been deployed by the integration agent. Production release requires red-team retest and explicit release approval.
 
-## What is Skylark Command?
+## Core product
 
-Skylark Command is an internal executive control room for answering business questions across Skylark's Deals and Work Orders boards. It turns messy live operational data into explainable pipeline, revenue, execution, receivables, cross-board, leadership, and data-quality views.
-
-The design principle is simple: **business numbers are computed deterministically first; AI may interpret or explain those results, but it does not invent the calculations.**
-
-## Problem
-
-Founder-level questions often require joining commercial and delivery context across two imperfect monday.com boards. Manual inspection is slow, definitions can drift, and missing or malformed fields can make polished dashboards misleading. Skylark Command centralizes those questions behind explicit analytics contracts, live read-only data access, data-quality caveats, and a controlled copilot interface.
-
-## Product screenshots
-
-Final submission should replace these placeholders with screenshots from the integrated release candidate:
-
-- [ ] Overview dashboard — executive KPIs and business pulse
-- [ ] Pipeline — stage/sector/pipeline analysis
-- [ ] Operations — work-order execution and billing health
-- [ ] Leadership — leadership brief
-- [ ] Data Health — missing/malformed/unmapped records
-- [ ] Founder Copilot — clarification and executive response states
+- Executive overview with Founder Attention Feed
+- Pipeline analysis by stage, sector, and supported periods
+- Operations, billing, collections, and receivables health
+- Leadership Brief
+- Data Health / deterministic quality findings
+- Founder Copilot with canonical `POST /api/chat`
+- Customer ranking clarification with deterministic ranking definitions
+- Source provenance, INR-aware presentation, retry states, and structured result rendering
 
 ## Architecture
 
 ```text
-monday.com Deals + Work Orders boards
-                │
-                ▼
-      server-only read-only client
-                │
-                ▼
-      normalization + quality flags
-                │
-                ▼
-      deterministic BI functions
-                │
-        ┌───────┴────────┐
-        ▼                ▼
- executive dashboards   /api/chat
+monday.com Deals + Work Orders
+          │
+          ▼
+ server-only read-only client
+          │
+          ▼
+ normalization + quality flags
+          │
+          ▼
+ deterministic BI / rankings / attention / periods
+          │
+     ┌────┴───────────────┐
+     ▼                    ▼
+ dashboards            POST /api/chat
                            │
                            ▼
-                 planner / orchestration
+                  planner + dispatcher
                            │
                            ▼
-                 AgentResponse to UI
+                 deterministic result.data
+                           │
+                 ┌─────────┴─────────┐
+                 ▼                   ▼
+        deterministic fallback   Gemini explanation
+                                 (optional)
 ```
 
-## Live monday.com integration
+`response.data` is authoritative. Gemini may add qualitative executive explanation only. If Gemini is missing, times out, is rate-limited, or returns an invalid response, the business request still uses deterministic analytics and falls back safely.
 
-Production business data is fetched from monday.com at runtime. The data client:
+## Deterministic analytics
 
-- requires server-side credentials and board IDs;
-- rejects GraphQL mutations and permits query-only access;
-- uses `cache: "no-store"` for live requests;
-- paginates board items instead of embedding assignment spreadsheets;
-- normalizes source rows before analytics;
-- returns source board metadata and fetch timestamps through the business-data layer.
+The analytics layer owns calculations including:
 
-No real monday.com token belongs in the repository.
+- pipeline overview and open pipeline value;
+- stage and sector breakdowns;
+- supported current-quarter / explicit-quarter / latest-available period analytics;
+- won value and risky-deal prioritization;
+- Work Order health, billing, collections, and receivables;
+- cross-board client intelligence;
+- customer rankings by won value, active pipeline, project execution, or combined commercial + operational importance;
+- Founder Attention Feed for commercial, delivery, AR, stale-deal, and concentration risks;
+- Leadership Brief;
+- Data Health and source-quality caveats.
 
-## Deterministic BI
-
-The analytics layer owns business calculations such as:
-
-- pipeline overview and stage/sector breakdowns;
-- won value and deal prioritization;
-- quarter analysis;
-- work-order health and delayed work;
-- billing and receivables;
-- client cross-board analysis;
-- leadership brief metrics;
-- data-quality findings.
-
-The LLM/provider layer, when enabled, must not recalculate these metrics from raw records.
+Missing values stay unknown. Periods with no usable records do not become fake zero performance; the deterministic period layer exposes no-data state and latest-available context when available.
 
 ## Founder Copilot
 
-The canonical backend is:
+The only chat backend is:
 
 ```text
 POST /api/chat
 Content-Type: application/json
 
-{"message":"What is our current open pipeline?"}
+{"message":"Which sector has the largest open opportunity?"}
 ```
 
-The backend validates request size/schema, creates request IDs, applies rate limiting, maps supported founder questions into deterministic query plans, returns clarification when a request is ambiguous, and emits a controlled `AgentResponse` envelope.
+The API applies strict request validation, bounded payload sizes, request IDs, safe errors, rate limiting, server-only data access, prompt-injection boundaries, and the deterministic planner/dispatcher.
 
-Examples of supported question families include pipeline, won value, work-order health, receivables, data health, leadership brief, quarter analysis, client cross-board questions, and deal prioritization.
+Examples:
 
-## Security model
+- `Which sector has the largest open opportunity?`
+- `What data should I not trust?`
+- `Mining sector this quarter`
+- `Which projects need leadership attention?`
+- `Who are our best customers?`
+- `Prepare a leadership brief.`
 
-- monday.com credentials are server-only and must never use a `NEXT_PUBLIC_` prefix.
-- The monday client imports `server-only` and rejects mutation operations.
-- `/api/chat` uses strict JSON/schema validation and bounded message/request sizes.
-- User/source data is treated as untrusted data rather than instructions.
-- API errors are converted to controlled public responses.
-- Security headers are configured in `next.config.ts`.
-- Chat requests are rate limited and carry request IDs for logs/troubleshooting.
+Ambiguous customer ranking asks for one of four explicit definitions:
 
-## Data-quality strategy
+1. Highest won value
+2. Largest active pipeline
+3. Best project execution
+4. Combined commercial + operational importance
 
-Skylark Command does not silently coerce every bad source value into a plausible number. Normalization records data-quality issues and the analytics layer can surface missing, malformed, or unmapped data as caveats. Cross-board analysis uses normalized client identifiers rather than assuming display names are perfectly aligned.
+All four resolve to deterministic ranking functions.
 
-## Pages / features
+## Gemini provider
 
-These are the release routes the integrated candidate is expected to expose:
+The optional executive explanation provider is Google Gemini using:
+
+```text
+gemini-2.5-flash-lite
+```
+
+Server key precedence:
+
+1. `GEMINI_API_KEY` — preferred
+2. `AI_API_KEY` — backward-compatible fallback only when `GEMINI_API_KEY` is unset
+
+Neither key may be exposed to client code or use a `NEXT_PUBLIC_` prefix.
+
+## monday.com integration
+
+Runtime data comes from monday.com. The data client:
+
+- imports `server-only`;
+- reads credentials from server environment variables;
+- rejects GraphQL mutation operations;
+- uses query-only access;
+- uses `cache: "no-store"`;
+- paginates board data;
+- normalizes records before analytics;
+- does not hardcode business datasets.
+
+## Environment variables
+
+Required:
+
+```text
+MONDAY_API_TOKEN=
+MONDAY_DEALS_BOARD_ID=
+MONDAY_WORK_ORDERS_BOARD_ID=
+```
+
+Optional AI explanation provider:
+
+```text
+GEMINI_API_KEY=
+AI_API_KEY=
+```
+
+`GEMINI_API_KEY` wins when both are configured. Keep all secrets server-side. `.env.example` contains names/placeholders only.
+
+## Routes
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Executive overview |
-| `/pipeline` | Pipeline analysis |
-| `/operations` | Work-order execution, billing and receivables |
-| `/leadership` | Leadership brief |
-| `/data-health` | Data-quality findings |
+| `/` | Executive overview and Founder Attention |
 | `/copilot` | Founder Copilot |
-| `/api/health` | Configuration/health snapshot |
-| `/api/chat` | Canonical founder-question API |
+| `/pipeline` | Pipeline intelligence |
+| `/operations` | Work Order / billing / receivables health |
+| `/leadership` | Leadership Brief |
+| `/data-health` | Deterministic data-quality findings |
+| `/api/health` | Configuration/health metadata |
+| `/api/chat` | Canonical Founder Copilot API |
 
-On the release-ops branch before UI integration, only the backend baseline routes are guaranteed. The smoke test intentionally fails missing release pages.
+There is no competing `/api/copilot` backend.
 
 ## Local setup
 
-Prerequisite: Node.js **20.9 or later** (compatible with the current Next.js 16 baseline).
+Node.js 20.9+ is required.
 
 ```bash
 npm install
@@ -136,76 +169,49 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## Environment variables
-
-Required in local runtime and the final Vercel environment:
-
-```text
-MONDAY_API_TOKEN=
-MONDAY_DEALS_BOARD_ID=
-MONDAY_WORK_ORDERS_BOARD_ID=
-```
-
-Optional/reserved by the current Agent 3 provider contract:
-
-```text
-AI_API_KEY=
-```
-
-Only configure `AI_API_KEY` if the final integrated backend actually uses that provider key. Keep every secret server-side. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for release configuration.
-
-## Tests
+## Quality gates
 
 ```bash
+npm install
 npm test
 npm run lint
 npm run build
 ```
 
-After a preview or production candidate is reachable:
+`npm test` includes both the deterministic BI suite and the Vitest backend/security/evaluator suites, including the Agent 5 release regression tests.
+
+For a reachable candidate:
 
 ```bash
 BASE_URL="https://your-preview.example" npm run smoke
 ```
 
-To include the safe `/api/chat` check:
+Optional safe chat smoke:
 
 ```bash
 BASE_URL="https://your-preview.example" SMOKE_CHAT=1 npm run smoke
 ```
 
-The release workflow also runs install, tests, lint, and build without deploying.
+## Security model
 
-## Decision Log
+- Server-only monday and Gemini credentials
+- Query-only/read-only monday client
+- Strict `/api/chat` JSON schema and size limits
+- Rate limiting
+- Request IDs
+- Safe public error envelopes
+- CSP and additional security headers through `next.config.ts`
+- Untrusted user/source data separated from system instructions
+- No LLM arithmetic for authoritative business metrics
 
-Architecture and product decisions are tracked in [`docs/DECISION_LOG.md`](docs/DECISION_LOG.md). Shared BI contracts are documented in [`docs/AGENT_1_CONTRACTS.md`](docs/AGENT_1_CONTRACTS.md).
+## Release documentation
 
-## Deployment
+- `docs/AGENT_1_CONTRACTS.md` — deterministic BI contracts
+- `docs/RELEASE_QA.md` — red-team / release evaluator guidance
+- `docs/DEPLOYMENT.md` — deployment readiness and environment configuration
+- `docs/SUBMISSION_CHECKLIST.md` — final submission gate
+- `docs/DECISION_LOG.md` — architecture/product decisions
 
-Deployment instructions and release risks are in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Submission sign-off is tracked in [`docs/SUBMISSION_CHECKLIST.md`](docs/SUBMISSION_CHECKLIST.md).
+## Release policy
 
-Agent 6 does **not** deploy production. MASTER CHAT should deploy only after Agent 4 integration and Agent 5 release QA are green.
-
-## Evaluator demo questions
-
-Use questions that exercise both deterministic metrics and ambiguity handling:
-
-1. `What is our current open pipeline?`
-2. `Show me pipeline by stage.`
-3. `How much value have we won?`
-4. `Which deals need attention?`
-5. `How healthy are our work orders?`
-6. `What are our receivables?`
-7. `Give me a leadership brief.`
-8. `What data-quality issues should I know about?`
-9. `Which clients have both open opportunities and active projects?`
-10. `Who are our best customers?` — expected to trigger a clarification instead of inventing a definition.
-
-## Known limitations
-
-- The final release still depends on successful integration of the product UI with the canonical `/api/chat` backend.
-- Availability and latency depend on monday.com and network conditions.
-- monday requests currently use a 12-second per-attempt timeout with retries; slow paginated upstream responses can approach platform function-duration limits and must be checked on Vercel.
-- `/api/health` verifies configuration presence; it does not perform a live monday.com dependency probe.
-- The current chat rate limiter is in-memory/process-local, so it is a safety guard rather than a globally coordinated distributed rate limiter across every serverless instance.
-- Optional external AI-provider behavior must be re-documented if the final Agent 3 integration adds provider-specific variables or runtime requirements.
+Agent integration does not merge `main` and does not deploy. The approved RC must pass tests, lint, production build, secret scan, browser/API smoke, and red-team retest before MASTER CHAT decides whether to merge or deploy.
