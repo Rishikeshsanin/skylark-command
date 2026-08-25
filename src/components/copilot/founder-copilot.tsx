@@ -268,7 +268,7 @@ function AssistantResponse({
                   key={option}
                   className="choice-button"
                   type="button"
-                  onClick={() => onPrompt(`${response.clarification?.question ?? "Clarification"} Answer: ${option}`)}
+                  onClick={() => onPrompt(option)}
                 >
                   {option}
                 </button>
