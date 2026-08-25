@@ -1,0 +1,36 @@
+name: V2 Copilot Scenario CI
+
+on:
+  push:
+    branches:
+      - v2/copilot-scenario
+  pull_request:
+    branches:
+      - v2-integration
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-copilot-scenario-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Reproducible install
+        run: npm ci
+      - name: Tests
+        run: npm test
+      - name: Lint
+        run: npm run lint
+      - name: Production build
+        run: npm run build
