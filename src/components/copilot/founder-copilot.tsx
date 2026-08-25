@@ -35,13 +35,15 @@ type ChatMessage = {
 };
 
 type RetryState = { prompt: string; message: string } | null;
-
 type MetricHighlight = { label: string; value: string | number };
 
 type Presentation = {
+  headline?: string;
   executiveSummary: string;
   observations: string[];
   risks: string[];
+  attentionItems: string[];
+  followUpQuestions: string[];
   caveats: string[];
   metrics: MetricHighlight[];
   boardLabels: string[];
@@ -103,7 +105,6 @@ function metricHighlights(dataRecord: Record<string, unknown> | null): MetricHig
   const explicitRecord = asRecord(explicit);
   const source = explicitRecord ?? dataRecord;
   if (!source) return [];
-
   const ignored = new Set([
     "executiveSummary",
     "observations",
@@ -112,6 +113,7 @@ function metricHighlights(dataRecord: Record<string, unknown> | null): MetricHig
     "metricHighlights",
     "recordsAnalyzed",
     "currencyCode",
+    "provenance",
   ]);
   const entries: MetricHighlight[] = [];
   for (const [key, value] of Object.entries(source)) {
@@ -128,6 +130,8 @@ function presentationFor(response: AgentResponse): Presentation {
   const responseRecord = asRecord(response);
   const dataRecord = asRecord(response.data);
   const sourceRecord = asRecord(response.source);
+  const provenanceRecord = asRecord(dataRecord?.provenance);
+  const explanation = response.explanation;
   const currencyCode =
     readString(sourceRecord, "currencyCode") ??
     readString(dataRecord, "currencyCode") ??
@@ -135,14 +139,15 @@ function presentationFor(response: AgentResponse): Presentation {
   const recordsAnalyzed =
     readNumber(sourceRecord, "recordsAnalyzed") ??
     readNumber(dataRecord, "recordsAnalyzed") ??
+    readNumber(provenanceRecord, "totalRecordsAnalyzed") ??
     readNumber(responseRecord, "recordsAnalyzed");
   const boardNames = readStringArray(sourceRecord, "boardNames");
   const boardLabels = boardNames.length ? boardNames : response.source.boardIds;
-  const observations = [
+  const observations = explanation?.observations ?? [
     ...readStringArray(responseRecord, "observations"),
     ...readStringArray(dataRecord, "observations"),
   ];
-  const risks = [
+  const risks = explanation?.risks ?? [
     ...readStringArray(responseRecord, "risks"),
     ...readStringArray(dataRecord, "risks"),
   ];
@@ -152,12 +157,16 @@ function presentationFor(response: AgentResponse): Presentation {
   ];
 
   return {
+    headline: explanation?.headline,
     executiveSummary:
+      explanation?.executiveSummary ??
       readString(responseRecord, "executiveSummary") ??
       readString(dataRecord, "executiveSummary") ??
       response.answer,
     observations: [...new Set(observations)],
     risks: [...new Set(risks)],
+    attentionItems: explanation?.attentionItems ?? [],
+    followUpQuestions: explanation?.followUpQuestions ?? [],
     caveats: [...new Set([...(response.caveats ?? []), ...dataQualityCaveats])],
     metrics: metricHighlights(dataRecord),
     boardLabels,
@@ -166,13 +175,9 @@ function presentationFor(response: AgentResponse): Presentation {
   };
 }
 
-function formatMetricValue(
-  label: string,
-  value: string | number,
-  currencyCode?: string,
-) {
+function formatMetricValue(label: string, value: string | number, currencyCode?: string) {
   if (typeof value !== "number") return value;
-  const looksMonetary = /value|amount|receivable|pipeline|revenue|billing|collected|cash|won/i.test(label);
+  const looksMonetary = /value|amount|receivable|pipeline|revenue|billing|collected|cash|won|exposure/i.test(label);
   return looksMonetary && currencyCode
     ? formatAmount(value, currencyCode)
     : formatNumber(value);
@@ -180,10 +185,10 @@ function formatMetricValue(
 
 function AssistantResponse({
   response,
-  onChoice,
+  onPrompt,
 }: {
   response: AgentResponse;
-  onChoice: (question: string, choice: string) => void;
+  onPrompt: (prompt: string) => void;
 }) {
   const presentation = presentationFor(response);
   const isClarification = Boolean(response.clarification?.required);
@@ -192,21 +197,14 @@ function AssistantResponse({
     <article className="assistant-answer">
       <div className="answer-topline">
         <StatusPill tone={response.ok ? "positive" : "critical"}>
-          {isClarification
-            ? "Clarification needed"
-            : response.ok
-              ? "Grounded answer"
-              : "Controlled error"}
+          {isClarification ? "Clarification needed" : response.ok ? "Grounded answer" : "Controlled error"}
         </StatusPill>
-        {response.errorCode ? (
-          <span className="error-code">{response.errorCode}</span>
-        ) : null}
+        {response.errorCode ? <span className="error-code">{response.errorCode}</span> : null}
       </div>
 
-      <section className="answer-section" aria-labelledby={`summary-${response.source.fetchedAt}`}>
-        <p className="answer-section-label" id={`summary-${response.source.fetchedAt}`}>
-          Executive summary
-        </p>
+      <section className="answer-section">
+        <p className="answer-section-label">Executive summary</p>
+        {presentation.headline ? <h3 className="answer-headline">{presentation.headline}</h3> : null}
         <p className="answer-text">{presentation.executiveSummary}</p>
       </section>
 
@@ -217,9 +215,7 @@ function AssistantResponse({
             {presentation.metrics.map(({ label, value }) => (
               <div key={`${label}-${String(value)}`}>
                 <span>{label}</span>
-                <strong className="tabular">
-                  {formatMetricValue(label, value, presentation.currencyCode)}
-                </strong>
+                <strong className="tabular">{formatMetricValue(label, value, presentation.currencyCode)}</strong>
               </div>
             ))}
           </div>
@@ -229,20 +225,21 @@ function AssistantResponse({
       {presentation.observations.length > 0 ? (
         <section className="answer-section">
           <p className="answer-section-label">Observations</p>
-          <ul className="executive-list">
-            {presentation.observations.map((observation) => (
-              <li key={observation}>{observation}</li>
-            ))}
-          </ul>
+          <ul className="executive-list">{presentation.observations.map((item) => <li key={item}>{item}</li>)}</ul>
         </section>
       ) : null}
 
       {presentation.risks.length > 0 ? (
         <section className="answer-section answer-section-risk">
           <p className="answer-section-label">Risks</p>
-          <ul className="executive-list">
-            {presentation.risks.map((risk) => <li key={risk}>{risk}</li>)}
-          </ul>
+          <ul className="executive-list">{presentation.risks.map((item) => <li key={item}>{item}</li>)}</ul>
+        </section>
+      ) : null}
+
+      {presentation.attentionItems.length > 0 ? (
+        <section className="answer-section">
+          <p className="answer-section-label">Attention items</p>
+          <ul className="executive-list">{presentation.attentionItems.map((item) => <li key={item}>{item}</li>)}</ul>
         </section>
       ) : null}
 
@@ -257,7 +254,7 @@ function AssistantResponse({
                   key={option}
                   className="choice-button"
                   type="button"
-                  onClick={() => onChoice(response.clarification?.question ?? "Clarification", option)}
+                  onClick={() => onPrompt(`${response.clarification?.question ?? "Clarification"} Answer: ${option}`)}
                 >
                   {option}
                 </button>
@@ -270,22 +267,27 @@ function AssistantResponse({
       {presentation.caveats.length > 0 ? (
         <section className="caveat-box">
           <strong>Data quality & caveats</strong>
-          <ul>
-            {presentation.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}
-          </ul>
+          <ul>{presentation.caveats.map((caveat) => <li key={caveat}>{caveat}</li>)}</ul>
+        </section>
+      ) : null}
+
+      {presentation.followUpQuestions.length > 0 ? (
+        <section className="answer-section">
+          <p className="answer-section-label">Follow-up questions</p>
+          <div className="choice-row">
+            {presentation.followUpQuestions.slice(0, 4).map((question) => (
+              <button key={question} className="choice-button" type="button" onClick={() => onPrompt(question)}>
+                {question}
+              </button>
+            ))}
+          </div>
         </section>
       ) : null}
 
       <footer className="answer-source" aria-label="Answer provenance">
         <span>Source: {response.source.provider}</span>
-        <span>
-          {presentation.boardLabels.length
-            ? `Boards: ${presentation.boardLabels.join(", ")}`
-            : "Source boards unavailable"}
-        </span>
-        {presentation.recordsAnalyzed !== undefined ? (
-          <span>{formatNumber(presentation.recordsAnalyzed)} records analyzed</span>
-        ) : null}
+        <span>{presentation.boardLabels.length ? `Boards: ${presentation.boardLabels.join(", ")}` : "Source boards unavailable"}</span>
+        {presentation.recordsAnalyzed !== undefined ? <span>{formatNumber(presentation.recordsAnalyzed)} records analyzed</span> : null}
         <span>Fetched {formatDateTime(response.source.fetchedAt)}</span>
       </footer>
     </article>
@@ -300,9 +302,7 @@ export function FounderCopilot() {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const hasConversation = messages.length > 0;
   const canSubmit = query.trim().length > 0 && !loading;
-  const liveRegion = loading
-    ? "Analyzing live business data"
-    : retryState?.message ?? "";
+  const liveRegion = loading ? "Analyzing live business data" : retryState?.message ?? "";
 
   async function submitPrompt(prompt: string) {
     const trimmed = prompt.trim();
@@ -310,12 +310,7 @@ export function FounderCopilot() {
 
     setRetryState(null);
     setLoading(true);
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      prompt: trimmed,
-    };
-    setMessages((current) => [...current, userMessage]);
+    setMessages((current) => [...current, { id: crypto.randomUUID(), role: "user", prompt: trimmed }]);
     setQuery("");
 
     try {
@@ -334,15 +329,9 @@ export function FounderCopilot() {
         throw new Error("Founder Copilot received an invalid AgentResponse envelope.");
       }
 
-      setMessages((current) => [
-        ...current,
-        { id: crypto.randomUUID(), role: "assistant", response: body },
-      ]);
+      setMessages((current) => [...current, { id: crypto.randomUUID(), role: "assistant", response: body }]);
     } catch (caught) {
-      const message =
-        caught instanceof Error
-          ? caught.message
-          : "Founder Copilot is temporarily unavailable.";
+      const message = caught instanceof Error ? caught.message : "Founder Copilot is temporarily unavailable.";
       setRetryState({ prompt: trimmed, message });
     } finally {
       setLoading(false);
@@ -357,28 +346,16 @@ export function FounderCopilot() {
 
   return (
     <div className="copilot-layout">
-      <div className="sr-only" aria-live="polite" aria-atomic="true">
-        {liveRegion}
-      </div>
+      <div className="sr-only" aria-live="polite" aria-atomic="true">{liveRegion}</div>
 
       {!hasConversation ? (
         <section className="copilot-welcome">
           <span className="copilot-badge">Founder Copilot</span>
           <h2>Ask the business, not the spreadsheet.</h2>
-          <p>
-            Questions are sent only to the canonical server-side <code>POST /api/chat</code>
-            endpoint. Responses remain source-aware, caveated, and auditable.
-          </p>
+          <p>Questions are sent only to the canonical server-side <code>POST /api/chat</code> endpoint. Responses remain source-aware, caveated, and auditable.</p>
           <div className="suggestion-grid">
             {suggestions.map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                onClick={() => {
-                  setQuery(suggestion);
-                  inputRef.current?.focus();
-                }}
-              >
+              <button key={suggestion} type="button" onClick={() => { setQuery(suggestion); inputRef.current?.focus(); }}>
                 {suggestion}<span aria-hidden="true">↗</span>
               </button>
             ))}
@@ -388,56 +365,25 @@ export function FounderCopilot() {
 
       {hasConversation ? (
         <section className="chat-thread" aria-label="Conversation history">
-          {messages.map((message) =>
-            message.role === "user" ? (
-              <div className="user-message" key={message.id}>
-                <span>You</span>
-                <p>{message.prompt}</p>
-              </div>
-            ) : message.response ? (
-              <div className="assistant-message" key={message.id}>
-                <span>Skylark Command</span>
-                <AssistantResponse
-                  response={message.response}
-                  onChoice={(question, choice) => {
-                    void submitPrompt(`${question} Answer: ${choice}`);
-                  }}
-                />
-              </div>
-            ) : null,
-          )}
+          {messages.map((message) => message.role === "user" ? (
+            <div className="user-message" key={message.id}><span>You</span><p>{message.prompt}</p></div>
+          ) : message.response ? (
+            <div className="assistant-message" key={message.id}>
+              <span>Skylark Command</span>
+              <AssistantResponse response={message.response} onPrompt={(prompt) => void submitPrompt(prompt)} />
+            </div>
+          ) : null)}
 
           {loading ? (
-            <div className="assistant-message">
-              <span>Skylark Command</span>
-              <div className="thinking-card" role="status">
-                <i /><i /><i />
-                <p>Analyzing live data…</p>
-              </div>
-            </div>
+            <div className="assistant-message"><span>Skylark Command</span><div className="thinking-card" role="status"><i /><i /><i /><p>Analyzing live data…</p></div></div>
           ) : null}
 
           {retryState ? (
             <div className="copilot-error" role="alert">
-              <div>
-                <strong>Couldn’t complete that request</strong>
-                <p>{retryState.message}</p>
-              </div>
+              <div><strong>Couldn’t complete that request</strong><p>{retryState.message}</p></div>
               <div className="error-actions">
-                <button
-                  className="button button-secondary"
-                  type="button"
-                  onClick={() => void submitPrompt(retryState.prompt)}
-                >
-                  Retry
-                </button>
-                <button
-                  className="button button-secondary"
-                  type="button"
-                  onClick={() => setRetryState(null)}
-                >
-                  Dismiss
-                </button>
+                <button className="button button-secondary" type="button" onClick={() => void submitPrompt(retryState.prompt)}>Retry</button>
+                <button className="button button-secondary" type="button" onClick={() => setRetryState(null)}>Dismiss</button>
               </div>
             </div>
           ) : null}
@@ -463,9 +409,7 @@ export function FounderCopilot() {
         />
         <div className="composer-footer">
           <span>{formatNumber(query.length)} / {formatNumber(MAX_MESSAGE_CHARS)} · Enter to send · Shift+Enter for new line</span>
-          <button className="button button-primary" type="submit" disabled={!canSubmit}>
-            {loading ? "Analyzing…" : "Ask Copilot"}
-          </button>
+          <button className="button button-primary" type="submit" disabled={!canSubmit}>{loading ? "Analyzing…" : "Ask Copilot"}</button>
         </div>
       </form>
     </div>
