@@ -90,7 +90,7 @@ export async function POST(request: Request) {
       latencyMs: Date.now() - startedAt,
       clarificationRequired: Boolean(response.clarification),
       planner: response.analysis.planner,
-      toolsUsed: response.analysis.toolsUsed,
+      toolsUsed: response.analysis.toolsUsed.join(" -> "),
     });
 
     return NextResponse.json(response, {
