@@ -61,7 +61,15 @@ afterEach(() => {
 
 describe("Gemini executive explanation provider", () => {
   it("uses the preferred Gemini key and sends a tool-free structured request", async () => {
-    const fetchImpl = vi.fn(async () => successfulResponse());
+    let requestUrl: string | URL | Request | undefined;
+    let requestInit: RequestInit | undefined;
+    const fetchImpl = vi.fn(
+      async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        requestUrl = url;
+        requestInit = init;
+        return successfulResponse();
+      },
+    );
     const provider = createGeminiExplanationProvider({
       apiKey: "gemini-super-secret",
       fetchImpl,
@@ -74,13 +82,12 @@ describe("Gemini executive explanation provider", () => {
     expect(explanation).toEqual(validExplanation);
     expect(JSON.stringify(explanation)).not.toContain("gemini-super-secret");
 
-    const [url, init] = fetchImpl.mock.calls[0];
-    expect(String(url)).toContain(GEMINI_EXECUTIVE_MODEL);
-    expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBe(
+    expect(String(requestUrl)).toContain(GEMINI_EXECUTIVE_MODEL);
+    expect((requestInit?.headers as Record<string, string>)["x-goog-api-key"]).toBe(
       "gemini-super-secret",
     );
 
-    const body = JSON.parse(String(init?.body));
+    const body = JSON.parse(String(requestInit?.body));
     expect(body.tools).toBeUndefined();
     expect(body.generationConfig.responseMimeType).toBe("application/json");
     expect(body.system_instruction.parts[0].text).toContain(
