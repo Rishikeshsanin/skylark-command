@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import "./copilot-visual-polish.css";
 import "./product-polish.css";
+import "./change-intelligence.css";
 import { AppShell } from "@/components/shell/app-shell";
 
 export const metadata: Metadata = {
