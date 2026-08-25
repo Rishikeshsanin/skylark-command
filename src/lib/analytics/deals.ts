@@ -15,22 +15,26 @@ function usableDeals(deals: Deal[]): Deal[] {
 export function calculatePipelineMetrics(deals: Deal[]): PipelineMetrics {
   const valid = usableDeals(deals);
   const open = valid.filter(isOpenDeal);
+  const won = valid.filter(isWonDeal);
   const knownOpenValues = open.filter((deal) => deal.value !== null);
+  const knownWonValues = won.filter((deal) => deal.value !== null);
 
   return {
     totalDeals: valid.length,
     openDeals: open.length,
     activeDeals: valid.filter(isActiveDeal).length,
-    wonDeals: valid.filter(isWonDeal).length,
+    wonDeals: won.length,
     deadDeals: valid.filter(isDeadDeal).length,
     openPipelineValue: sumKnown(open.map((deal) => deal.value)),
-    wonValue: sumKnown(valid.filter(isWonDeal).map((deal) => deal.value)),
+    wonValue: sumKnown(won.map((deal) => deal.value)),
     averageOpenDealSize:
       knownOpenValues.length > 0
         ? roundAmount(sumKnown(knownOpenValues.map((deal) => deal.value)) / knownOpenValues.length)
         : null,
     knownOpenValueDeals: knownOpenValues.length,
     unknownOpenValueDeals: open.length - knownOpenValues.length,
+    knownWonValueDeals: knownWonValues.length,
+    unknownWonValueDeals: won.length - knownWonValues.length,
   };
 }
 
