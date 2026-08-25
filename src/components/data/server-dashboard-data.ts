@@ -12,6 +12,14 @@ import {
   pipelineByStage,
 } from "@/lib/analytics";
 
+export async function loadSafely<T>(loader: () => Promise<T>, errorMessage: string): Promise<{ data: T | null; error: string | null }> {
+  try {
+    return { data: await loader(), error: null };
+  } catch {
+    return { data: null, error: errorMessage };
+  }
+}
+
 function analysisDate() {
   return new Date().toISOString().slice(0, 10);
 }
