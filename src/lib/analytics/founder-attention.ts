@@ -235,7 +235,10 @@ export function getFounderAttentionFeed(
   return {
     asOfDate,
     currencyCode: "INR",
-    items: sorted.map(({ sortAmount: _sortAmount, ...item }) => item),
+    items: sorted.map(({ sortAmount, ...item }) => {
+      void sortAmount;
+      return item;
+    }),
     provenance: {
       dealRecordsAnalyzed: validDeals.length,
       workOrderRecordsAnalyzed: validWorkOrders.length,
