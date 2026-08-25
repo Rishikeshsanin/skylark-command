@@ -9,6 +9,7 @@
     }
   },
   "postCreateCommand": "npm install",
+  "postStartCommand": "npm run dev -- --hostname 0.0.0.0",
   "customizations": {
     "vscode": {
       "extensions": [
