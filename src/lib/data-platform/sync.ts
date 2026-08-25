@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { loadBusinessData, type BusinessDataSnapshot } from "@/lib/business-data";
+import { loadLiveBusinessData, type BusinessDataSnapshot } from "@/lib/business-data";
 import type { TemporalFreshness, TemporalSnapshotStore } from "./contracts";
 import { createPostgresTemporalSnapshotStore } from "./postgres";
 import { calculateSourceWatermark } from "./watermark";
@@ -37,7 +37,7 @@ function safeSyncError(error: unknown): string {
 
 export async function runBusinessDataSync(options: RunSyncOptions = {}): Promise<SyncResult> {
   const store = options.store ?? createPostgresTemporalSnapshotStore();
-  const liveLoader = options.liveLoader ?? (() => loadBusinessData());
+  const liveLoader = options.liveLoader ?? (() => loadLiveBusinessData());
   const workspaceKey = options.workspaceKey ?? process.env.SKYLARK_WORKSPACE_KEY?.trim() ?? DEFAULT_WORKSPACE_KEY;
   const now = options.now ?? (() => new Date());
   const createId = options.createId ?? randomUUID;
