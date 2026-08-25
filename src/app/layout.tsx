@@ -4,6 +4,7 @@ import "./globals.css";
 import "./copilot-visual-polish.css";
 import "./product-polish.css";
 import "./v2-design-system.css";
+import "./v2-trust-grammar.css";
 import { AppShell } from "@/components/shell/app-shell";
 
 export const metadata: Metadata = {
