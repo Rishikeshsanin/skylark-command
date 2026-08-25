@@ -250,13 +250,13 @@ export async function fetchBoardItems(
   let boardName = "";
 
   do {
-    const data = await mondayQuery<BoardItemsQueryData>(
+    const data: BoardItemsQueryData = await mondayQuery<BoardItemsQueryData>(
       BOARD_ITEMS_QUERY,
       { boardIds: [boardId], limit, cursor },
       options,
     );
 
-    const board = data.boards?.[0];
+    const board: BoardItemsQueryData["boards"][number] | undefined = data.boards[0];
     if (!board || !board.items_page || !Array.isArray(board.items_page.items)) {
       throw new MondayApiError(
         "INVALID_RESPONSE",
