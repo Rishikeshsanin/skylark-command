@@ -1,4 +1,4 @@
-name: Agent 5 Release QA
+name: Agent 5 Final RC2 Red Team
 
 on:
   push:
@@ -9,52 +9,200 @@ permissions:
   contents: read
 
 jobs:
-  release-qa:
+  rc2-red-team:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
-      - name: Checkout
+      - name: Checkout Agent 5 QA harness
         uses: actions/checkout@v4
+        with:
+          ref: agent-5-release-qa-v2
+          path: qa
+          persist-credentials: false
+
+      - name: Checkout exact FINAL RC2
+        uses: actions/checkout@v4
+        with:
+          ref: ee027ec57c4b54409f462a1bf14e0a014709f020
+          path: rc2
+          persist-credentials: false
+
+      - name: Assert exact SHA under test
+        working-directory: rc2
+        shell: bash
+        run: |
+          actual=$(git rev-parse HEAD)
+          echo "RC2_SHA=$actual"
+          test "$actual" = "ee027ec57c4b54409f462a1bf14e0a014709f020"
+          test -f package-lock.json
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: rc2/package-lock.json
 
-      - name: Install dependencies
-        run: npm install
+      - name: npm ci — lockfile reproducibility
+        id: ci
+        continue-on-error: true
+        working-directory: rc2
+        shell: bash
+        run: |
+          before=$(sha256sum package-lock.json | awk '{print $1}')
+          npm ci
+          after=$(sha256sum package-lock.json | awk '{print $1}')
+          echo "package-lock before=$before"
+          echo "package-lock after=$after"
+          test "$before" = "$after"
+          git diff --exit-code -- package.json package-lock.json
 
-      - name: Unit and release regression tests
+      - name: npm test — exact RC2
         id: tests
         continue-on-error: true
+        working-directory: rc2
         run: npm test
 
-      - name: Lint
+      - name: npm run lint — exact RC2
         id: lint
         continue-on-error: true
+        working-directory: rc2
         run: npm run lint
 
-      - name: Production build
+      - name: npm run build — exact RC2
         id: build
         continue-on-error: true
+        working-directory: rc2
         run: npm run build
 
-      - name: Release gate summary
+      - name: Static server-only and client-secret boundary
+        id: static_security
+        continue-on-error: true
+        working-directory: rc2
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f src/app/api/chat/route.ts
+          test ! -e src/app/api/copilot/route.ts
+          routes=$(find src/app/api -name route.ts -print | sort)
+          echo "$routes"
+          test "$(printf '%s\n' "$routes" | wc -l)" -eq 2
+          printf '%s\n' "$routes" | grep -qx 'src/app/api/chat/route.ts'
+          printf '%s\n' "$routes" | grep -qx 'src/app/api/health/route.ts'
+
+          if grep -R -n -E 'MONDAY_API_TOKEN|MONDAY_DEALS_BOARD_ID|MONDAY_WORK_ORDERS_BOARD_ID|GEMINI_API_KEY|AI_API_KEY|api\.monday\.com/v2' .next/static; then
+            echo "Sensitive server configuration reference found in client static bundle"
+            exit 1
+          fi
+          echo "No monday/Gemini credential names or monday API URL found in client static bundle."
+
+      - name: Install browser red-team dependency
+        id: browser_install
+        continue-on-error: true
+        working-directory: rc2
+        shell: bash
+        run: |
+          npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+          git diff --exit-code -- package.json package-lock.json
+
+      - name: Runtime security + browser red-team
+        id: browser
+        continue-on-error: true
+        working-directory: rc2
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm start -- -H 127.0.0.1 > /tmp/skylark-rc2.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/api/health > /tmp/health.json
+
+          # Security headers.
+          curl -sSI http://127.0.0.1:3000/api/health | tr '[:upper:]' '[:lower:]' > /tmp/headers.txt
+          grep -q '^x-content-type-options: nosniff' /tmp/headers.txt
+          grep -q '^x-frame-options: deny' /tmp/headers.txt
+          grep -q '^referrer-policy: strict-origin-when-cross-origin' /tmp/headers.txt
+          grep -q '^permissions-policy:' /tmp/headers.txt
+          grep -q '^content-security-policy:' /tmp/headers.txt
+          grep -q '^strict-transport-security:' /tmp/headers.txt
+
+          # Malformed JSON.
+          code=$(curl -sS -o /tmp/malformed.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json' -H 'X-Forwarded-For: 198.51.100.1' --data '{bad')
+          test "$code" = "400"
+          grep -q 'INVALID_JSON' /tmp/malformed.json
+
+          # Charset content type must be accepted by the parser (failure may only be later source configuration).
+          code=$(curl -sS -o /tmp/charset.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json; charset=utf-8' -H 'X-Forwarded-For: 198.51.100.2' --data '{"message":"How is our pipeline looking?"}')
+          test "$code" != "415"
+
+          # Oversized raw body.
+          python - <<'PY' >/tmp/oversized.json
+          import json
+          print(json.dumps({"message":"x" * 9000}))
+          PY
+          code=$(curl -sS -o /tmp/oversized-response.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json' -H 'X-Forwarded-For: 198.51.100.3' --data-binary @/tmp/oversized.json)
+          test "$code" = "413"
+          grep -Eq 'REQUEST_TOO_LARGE|MESSAGE_TOO_LONG' /tmp/oversized-response.json
+
+          # Arbitrary GraphQL/request-schema attempt.
+          code=$(curl -sS -o /tmp/graphql.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json' -H 'X-Forwarded-For: 198.51.100.4' --data '{"message":"pipeline","arbitraryGraphql":"mutation { delete_item(id:1) { id } }"}')
+          test "$code" = "400"
+          grep -q 'INVALID_REQUEST' /tmp/graphql.json
+
+          # No legacy chat route.
+          code=$(curl -sS -o /tmp/legacy.txt -w '%{http_code}' -X POST http://127.0.0.1:3000/api/copilot -H 'Content-Type: application/json' --data '{"message":"hello"}')
+          test "$code" = "404"
+
+          # Safe error envelope with no configured live secrets: no env name, stack, or filesystem disclosure.
+          code=$(curl -sS -o /tmp/safe-error.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json' -H 'X-Forwarded-For: 198.51.100.5' --data '{"message":"How is our pipeline looking?"}')
+          test "$code" = "503"
+          grep -q 'SOURCE_CONFIGURATION_ERROR' /tmp/safe-error.json
+          ! grep -Eq 'MONDAY_API_TOKEN|GEMINI_API_KEY|AI_API_KEY|node_modules|/home/runner|Error:' /tmp/safe-error.json
+
+          # Rate limiting is enforced at 20 requests/minute for one client key.
+          for i in $(seq 1 20); do
+            code=$(curl -sS -o /tmp/rate-$i.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json' -H 'X-Forwarded-For: 198.51.100.99' --data '{}')
+            test "$code" = "400"
+          done
+          code=$(curl -sS -D /tmp/rate-headers.txt -o /tmp/rate-final.json -w '%{http_code}' -X POST http://127.0.0.1:3000/api/chat -H 'Content-Type: application/json' -H 'X-Forwarded-For: 198.51.100.99' --data '{}')
+          test "$code" = "429"
+          grep -q 'RATE_LIMITED' /tmp/rate-final.json
+          grep -qi '^retry-after:' /tmp/rate-headers.txt
+
+          # Existing RC2 smoke + Agent 5 evaluator-facing browser harness.
+          node .github/scripts/agent2-browser-smoke.mjs
+          cp ../qa/.github/scripts/agent5-rc2-browser.mjs ./.agent5-rc2-browser.mjs
+          node ./.agent5-rc2-browser.mjs
+
+      - name: Final RC2 QA gate
         if: always()
         shell: bash
         run: |
+          echo "npm_ci=${{ steps.ci.outcome }}"
           echo "tests=${{ steps.tests.outcome }}"
           echo "lint=${{ steps.lint.outcome }}"
           echo "build=${{ steps.build.outcome }}"
-
+          echo "static_security=${{ steps.static_security.outcome }}"
+          echo "browser_install=${{ steps.browser_install.outcome }}"
+          echo "browser_security=${{ steps.browser.outcome }}"
           failed=0
-          if [ "${{ steps.tests.outcome }}" != "success" ]; then failed=1; fi
-          if [ "${{ steps.lint.outcome }}" != "success" ]; then failed=1; fi
-          if [ "${{ steps.build.outcome }}" != "success" ]; then failed=1; fi
-
+          for outcome in \
+            "${{ steps.ci.outcome }}" \
+            "${{ steps.tests.outcome }}" \
+            "${{ steps.lint.outcome }}" \
+            "${{ steps.build.outcome }}" \
+            "${{ steps.static_security.outcome }}" \
+            "${{ steps.browser_install.outcome }}" \
+            "${{ steps.browser.outcome }}"; do
+            if [ "$outcome" != "success" ]; then failed=1; fi
+          done
           if [ "$failed" -ne 0 ]; then
-            echo "Release QA gate is BLOCKED. See the individual steps above."
+            echo "FINAL RC2 RED-TEAM GATE: BLOCKED"
             exit 1
           fi
-
-          echo "Release QA gate passed."
+          echo "FINAL RC2 RED-TEAM GATE: PASS"
