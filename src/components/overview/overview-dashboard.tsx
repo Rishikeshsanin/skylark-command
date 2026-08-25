@@ -8,7 +8,7 @@ import type {
 } from "@/types";
 import { DataState } from "@/components/ui/data-state";
 import { DistributionBars } from "@/components/ui/distribution-bars";
-import { formatAmount, formatNumber } from "@/components/ui/formatters";
+import { formatAmount, formatAmountFull, formatNumber } from "@/components/ui/formatters";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Panel } from "@/components/ui/panel";
 import { FounderAttention } from "./founder-attention";
@@ -58,6 +58,9 @@ export function OverviewDashboard({
   const valueCoverage = pipeline.openDeals
     ? `${formatNumber(pipeline.knownOpenValueDeals)} of ${formatNumber(pipeline.openDeals)} open opportunities have known values.`
     : "No open opportunities are currently reported.";
+  const wonCoverage = pipeline.wonDeals
+    ? `${formatNumber(pipeline.knownWonValueDeals)} of ${formatNumber(pipeline.wonDeals)} won deals have known values.`
+    : "No won deals are currently reported.";
 
   return (
     <div className="dashboard-stack">
@@ -65,12 +68,14 @@ export function OverviewDashboard({
         <MetricCard
           label="Open pipeline"
           value={formatAmount(pipeline.openPipelineValue, resolvedCurrency)}
+          exactValue={formatAmountFull(pipeline.openPipelineValue, resolvedCurrency)}
           hint={valueCoverage}
         />
         <MetricCard
-          label="Won value"
+          label="Known won value"
           value={formatAmount(pipeline.wonValue, resolvedCurrency)}
-          hint={`${formatNumber(pipeline.wonDeals)} won deals`}
+          exactValue={formatAmountFull(pipeline.wonValue, resolvedCurrency)}
+          hint={wonCoverage}
           tone="positive"
         />
         <MetricCard
@@ -87,6 +92,7 @@ export function OverviewDashboard({
         <MetricCard
           label="Receivables"
           value={formatAmount(workOrders.receivables, resolvedCurrency)}
+          exactValue={formatAmountFull(workOrders.receivables, resolvedCurrency)}
           hint={`${formatNumber(workOrders.unknownReceivableCount)} unknown receivable values`}
         />
         <MetricCard
@@ -101,39 +107,53 @@ export function OverviewDashboard({
         />
       </div>
 
-      <div className="confidence-band" role="note" aria-label="Data confidence">
+      <div className="confidence-band confidence-band-four" role="note" aria-label="Data confidence">
         <div>
           <span className="confidence-label">Data confidence</span>
           <strong>{valueCoverage}</strong>
         </div>
         <div>
-          <span>Records analyzed</span>
-          <strong>{attentionFeed ? formatNumber(attentionFeed.provenance.totalRecordsAnalyzed) : "—"}</strong>
+          <span>Won-value coverage</span>
+          <strong>{wonCoverage}</strong>
         </div>
         <div>
           <span>Missing open-deal values</span>
           <strong>{formatNumber(pipeline.unknownOpenValueDeals)}</strong>
+        </div>
+        <div>
+          <span>Unknown receivables</span>
+          <strong>{formatNumber(workOrders.unknownReceivableCount)}</strong>
         </div>
       </div>
 
       <div className="split-grid">
         <Panel title="Pipeline by sector" description="Open pipeline value across the leading sectors.">
           <DistributionBars
+            ariaLabel="Open pipeline value by sector"
             items={sectorRows.map((sector) => ({
               label: sector.sector || "Unmapped",
               value: sector.openPipelineValue,
               secondary: formatAmount(sector.openPipelineValue, resolvedCurrency),
+              detail: formatAmountFull(sector.openPipelineValue, resolvedCurrency),
             }))}
             emptyLabel="No sector metrics available."
           />
         </Panel>
         <Panel title="Operational posture" description="Execution and billing signals from Work Orders.">
-          <div className="summary-list">
-            <div><span>Ongoing</span><strong>{formatNumber(workOrders.ongoingWorkOrders)}</strong></div>
-            <div><span>Not started</span><strong>{formatNumber(workOrders.notStartedWorkOrders)}</strong></div>
-            <div><span>Delayed</span><strong>{formatNumber(workOrders.delayedWorkOrders)}</strong></div>
-            <div><span>Paused</span><strong>{formatNumber(workOrders.pausedWorkOrders)}</strong></div>
-            <div><span>Amount to be billed</span><strong>{formatAmount(workOrders.amountToBeBilledInclGst, resolvedCurrency)}</strong></div>
+          <DistributionBars
+            ariaLabel="Work Order operational posture"
+            items={[
+              { label: "Completed", value: workOrders.completedWorkOrders },
+              { label: "Ongoing", value: workOrders.ongoingWorkOrders },
+              { label: "Not started", value: workOrders.notStartedWorkOrders },
+              { label: "Delayed", value: workOrders.delayedWorkOrders },
+              { label: "Paused", value: workOrders.pausedWorkOrders },
+            ]}
+          />
+          <div className="cash-callout">
+            <span>Known amount to be billed incl. GST</span>
+            <strong>{formatAmount(workOrders.amountToBeBilledInclGst, resolvedCurrency)}</strong>
+            <small>{formatAmountFull(workOrders.amountToBeBilledInclGst, resolvedCurrency)}</small>
           </div>
         </Panel>
       </div>

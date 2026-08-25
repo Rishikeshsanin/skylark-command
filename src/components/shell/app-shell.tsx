@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { NavLink } from "./nav-link";
 
 const navigation = [
@@ -15,13 +16,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <aside className="sidebar" aria-label="Primary navigation">
-        <div className="brand-block">
+        <Link className="brand-block brand-link" href="/" aria-label="Skylark Command home">
           <div className="brand-mark" aria-hidden="true">SC</div>
           <div>
             <p className="brand-name">Skylark Command</p>
             <p className="brand-subtitle">Founder Intelligence</p>
           </div>
-        </div>
+        </Link>
         <nav className="sidebar-nav">
           {navigation.map((item) => <NavLink key={item.href} {...item} />)}
         </nav>
@@ -35,10 +36,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="mobile-header">
-        <div className="mobile-brand">
+        <Link className="mobile-brand brand-link" href="/" aria-label="Skylark Command home">
           <div className="brand-mark" aria-hidden="true">SC</div>
           <div><strong>Skylark Command</strong><span>Founder Intelligence</span></div>
-        </div>
+        </Link>
       </div>
       <nav className="mobile-nav" aria-label="Mobile navigation">
         {navigation.map((item) => <NavLink key={item.href} {...item} />)}

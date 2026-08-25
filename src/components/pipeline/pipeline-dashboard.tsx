@@ -7,8 +7,9 @@ import type {
   StageMetric,
 } from "@/types/domain";
 import { DataState } from "@/components/ui/data-state";
+import { CoverageBar } from "@/components/ui/coverage-bar";
 import { DistributionBars } from "@/components/ui/distribution-bars";
-import { formatAmount, formatNumber } from "@/components/ui/formatters";
+import { formatAmount, formatAmountFull, formatNumber } from "@/components/ui/formatters";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Panel } from "@/components/ui/panel";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -60,34 +61,56 @@ export function PipelineDashboard({
   return (
     <div className="dashboard-stack">
       <div className="metric-grid metric-grid-five executive-metric-grid">
-        <MetricCard label="Known open pipeline" value={formatAmount(metrics.openPipelineValue, currency)} hint={openCoverage} />
+        <MetricCard label="Known open pipeline" value={formatAmount(metrics.openPipelineValue, currency)} exactValue={formatAmountFull(metrics.openPipelineValue, currency)} hint={openCoverage} />
         <MetricCard label="Active deals" value={formatNumber(metrics.activeDeals)} hint={`${formatNumber(metrics.totalDeals)} total deals`} />
-        <MetricCard label="Known won value" value={formatAmount(metrics.wonValue, currency)} hint={wonCoverage} tone="positive" />
-        <MetricCard label="Avg. open deal" value={formatAmount(metrics.averageOpenDealSize, currency)} hint={`${formatNumber(metrics.knownOpenValueDeals)} known values`} />
+        <MetricCard label="Known won value" value={formatAmount(metrics.wonValue, currency)} exactValue={formatAmountFull(metrics.wonValue, currency)} hint={wonCoverage} tone="positive" />
+        <MetricCard label="Avg. open deal" value={formatAmount(metrics.averageOpenDealSize, currency)} exactValue={formatAmountFull(metrics.averageOpenDealSize, currency)} hint={`${formatNumber(metrics.knownOpenValueDeals)} known values`} />
         <MetricCard label="Unknown open values" value={formatNumber(metrics.unknownOpenValueDeals)} hint="Excluded from open-pipeline value and averages" tone={metrics.unknownOpenValueDeals > 0 ? "warning" : "neutral"} />
       </div>
 
-      <div className="confidence-band" role="note" aria-label="Pipeline data confidence">
-        <div><span className="confidence-label">Open value coverage</span><strong>{openCoverage}</strong></div>
-        <div><span>Won value coverage</span><strong>{wonCoverage}</strong></div>
-        <div><span>Missing won values</span><strong>{formatNumber(metrics.unknownWonValueDeals)}</strong></div>
+      <div className="split-grid pipeline-overview-grid">
+        <Panel title="Value completeness" description="Known monetary totals explicitly exclude opportunities without usable values.">
+          <div className="coverage-stack">
+            <CoverageBar
+              label="Open-deal value coverage"
+              known={metrics.knownOpenValueDeals}
+              unknown={metrics.unknownOpenValueDeals}
+              description={openCoverage}
+            />
+            <CoverageBar
+              label="Won-deal value coverage"
+              known={metrics.knownWonValueDeals}
+              unknown={metrics.unknownWonValueDeals}
+              description={wonCoverage}
+            />
+          </div>
+        </Panel>
+        <Panel title="Deal state snapshot" description="Canonical counts are shown independently; the UI does not infer missing status categories.">
+          <div className="deal-state-grid" role="list" aria-label="Canonical deal state counts">
+            <div role="listitem"><span>Total</span><strong>{formatNumber(metrics.totalDeals)}</strong></div>
+            <div role="listitem"><span>Open</span><strong>{formatNumber(metrics.openDeals)}</strong></div>
+            <div role="listitem"><span>Active</span><strong>{formatNumber(metrics.activeDeals)}</strong></div>
+            <div role="listitem"><span>Won</span><strong>{formatNumber(metrics.wonDeals)}</strong></div>
+            <div role="listitem"><span>Dead</span><strong>{formatNumber(metrics.deadDeals)}</strong></div>
+          </div>
+        </Panel>
       </div>
 
       <div className="split-grid">
         <Panel title="Pipeline by stage" description="Known value by the normalized deal stage supplied by analytics.">
-          <DistributionBars items={orderedStages.map((stage) => ({ label: stage.stage || "Unmapped", value: stage.totalValue, secondary: `${formatAmount(stage.totalValue, currency)} · ${formatNumber(stage.dealCount)} deals` }))} />
+          <DistributionBars ariaLabel="Known pipeline value by deal stage" items={orderedStages.map((stage) => ({ label: stage.stage || "Unmapped", value: stage.totalValue, secondary: `${formatAmount(stage.totalValue, currency)} · ${formatNumber(stage.dealCount)} deals`, detail: `${formatAmountFull(stage.totalValue, currency)} across ${formatNumber(stage.dealCount)} deals` }))} />
         </Panel>
         <Panel title="Pipeline by sector" description="Known open opportunity value by sector.">
-          <DistributionBars items={orderedSectors.slice(0, 8).map((sector) => ({ label: sector.sector || "Unmapped", value: sector.openPipelineValue, secondary: `${formatAmount(sector.openPipelineValue, currency)} · ${formatNumber(sector.openDealCount)} open` }))} />
+          <DistributionBars ariaLabel="Known open pipeline value by sector" items={orderedSectors.slice(0, 8).map((sector) => ({ label: sector.sector || "Unmapped", value: sector.openPipelineValue, secondary: `${formatAmount(sector.openPipelineValue, currency)} · ${formatNumber(sector.openDealCount)} open`, detail: `${formatAmountFull(sector.openPipelineValue, currency)} across ${formatNumber(sector.openDealCount)} open opportunities` }))} />
         </Panel>
       </div>
 
       <div className="split-grid">
         <Panel title="Largest open deals" description="Top open opportunities ranked by the canonical analytics function; records without known deal values are not assigned a monetary amount.">
-          {largestDeals?.length ? <div className="compact-list">{largestDeals.slice(0, 8).map((deal) => <div key={deal.mondayItemId}><div><strong>{deal.name}</strong><span>{deal.normalizedClientKey ?? deal.clientCode ?? "Client unavailable"} · {deal.stage ?? "Stage unavailable"}</span></div><div className="compact-value"><strong>{formatAmount(deal.value, currency)}</strong><span>{deal.tentativeCloseDate ?? deal.closeDate ?? "Close date unavailable"}</span></div></div>)}</div> : <p className="muted-copy">No ranked open deals were supplied.</p>}
+          {largestDeals?.length ? <div className="compact-list">{largestDeals.slice(0, 8).map((deal) => <div key={deal.mondayItemId}><div><strong>{deal.name}</strong><span>{deal.normalizedClientKey ?? deal.clientCode ?? "Client unavailable"} · {deal.stage ?? "Stage unavailable"}</span></div><div className="compact-value"><strong title={formatAmountFull(deal.value, currency)}>{formatAmount(deal.value, currency)}</strong><span>{formatAmountFull(deal.value, currency)} · {deal.tentativeCloseDate ?? deal.closeDate ?? "Close date unavailable"}</span></div></div>)}</div> : <p className="muted-copy">No ranked open deals were supplied.</p>}
         </Panel>
         <Panel title="Close-date distribution" description="Known deal value grouped by canonical close quarter.">
-          <DistributionBars items={(quarters ?? []).map((quarter) => ({ label: quarter.quarter, value: quarter.totalValue, secondary: `${formatAmount(quarter.totalValue, currency)} · ${formatNumber(quarter.dealCount)} deals` }))} emptyLabel="No valid close-date distribution is available." />
+          <DistributionBars ariaLabel="Known deal value by close quarter" items={(quarters ?? []).map((quarter) => ({ label: quarter.quarter, value: quarter.totalValue, secondary: `${formatAmount(quarter.totalValue, currency)} · ${formatNumber(quarter.dealCount)} deals`, detail: `${formatAmountFull(quarter.totalValue, currency)} across ${formatNumber(quarter.dealCount)} deals` }))} emptyLabel="No valid close-date distribution is available." />
         </Panel>
       </div>
 
