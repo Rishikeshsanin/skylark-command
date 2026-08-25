@@ -17,9 +17,10 @@ import { applyScenarioOverrides } from "./scenario-engine";
 import { executeRegisteredTool } from "./tool-registry";
 
 function deal(overrides: Partial<Deal> & Pick<Deal, "mondayItemId" | "name">): Deal {
+  const { mondayItemId, name, ...rest } = overrides;
   return {
-    mondayItemId: overrides.mondayItemId,
-    name: overrides.name,
+    mondayItemId,
+    name,
     ownerCode: null,
     clientCode: null,
     normalizedClientKey: null,
@@ -35,14 +36,15 @@ function deal(overrides: Partial<Deal> & Pick<Deal, "mondayItemId" | "name">): D
     sourceRow: null,
     sourceQualityFlags: [],
     malformed: false,
-    ...overrides,
+    ...rest,
   };
 }
 
 function workOrder(overrides: Partial<WorkOrder> & Pick<WorkOrder, "mondayItemId" | "name">): WorkOrder {
+  const { mondayItemId, name, ...rest } = overrides;
   return {
-    mondayItemId: overrides.mondayItemId,
-    name: overrides.name,
+    mondayItemId,
+    name,
     customerCode: null,
     normalizedClientKey: null,
     serialNumber: null,
@@ -84,7 +86,7 @@ function workOrder(overrides: Partial<WorkOrder> & Pick<WorkOrder, "mondayItemId
     sourceRow: null,
     sourceQualityFlags: [],
     malformed: false,
-    ...overrides,
+    ...rest,
   };
 }
 
