@@ -166,15 +166,13 @@ function mergeEvidence(...items: ToolEvidence[]): ToolEvidence {
 }
 
 function semanticLineageFilters(filters: AnalysisFilter[]): LineageFilter[] {
-  return filters.flatMap((filter) => {
-    if (filter.field === "sector" || filter.field === "stage") {
-      return [{ dimension: filter.field, operator: "eq" as const, values: [filter.value] }];
+  const lineageFilters: LineageFilter[] = [];
+  for (const filter of filters) {
+    if (filter.field === "sector" || filter.field === "stage" || filter.field === "client") {
+      lineageFilters.push({ dimension: filter.field, operator: "eq", values: [filter.value] });
     }
-    if (filter.field === "client") {
-      return [{ dimension: "client" as const, operator: "eq" as const, values: [filter.value] }];
-    }
-    return [];
-  });
+  }
+  return lineageFilters;
 }
 
 function issueCounts(snapshot: BusinessDataSnapshot) {
