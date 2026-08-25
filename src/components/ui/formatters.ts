@@ -29,20 +29,22 @@ export function formatAmount(value: number | null | undefined, currencyCode?: st
   }
 }
 
+/** Full-precision presentation for authoritative backend-supplied monetary values. */
 export function formatAmountFull(value: number | null | undefined, currencyCode?: string) {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
   const currency = currencyCode?.trim().toUpperCase();
-  if (!currency) return formatNumber(value);
+  if (!currency) return formatNumber(value, 2);
 
   try {
     return new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en", {
       style: "currency",
       currency,
       currencyDisplay: "symbol",
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
     }).format(value);
   } catch {
-    return formatNumber(value);
+    return formatNumber(value, 2);
   }
 }
 
