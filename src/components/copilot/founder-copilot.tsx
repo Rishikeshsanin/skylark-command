@@ -14,6 +14,7 @@ import {
   formatNumber,
 } from "@/components/ui/formatters";
 import { StatusPill } from "@/components/ui/status-pill";
+import { structuredDataLines } from "@/components/copilot/structured-data";
 
 const CHAT_ENDPOINT = "/api/chat";
 const MAX_MESSAGE_CHARS = 2_000;
@@ -46,6 +47,7 @@ type Presentation = {
   followUpQuestions: string[];
   caveats: string[];
   metrics: MetricHighlight[];
+  structuredLines: string[];
   boardLabels: string[];
   recordsAnalyzed?: number;
   currencyCode?: string;
@@ -169,6 +171,7 @@ function presentationFor(response: AgentResponse): Presentation {
     followUpQuestions: explanation?.followUpQuestions ?? [],
     caveats: [...new Set([...(response.caveats ?? []), ...dataQualityCaveats])],
     metrics: metricHighlights(dataRecord),
+    structuredLines: structuredDataLines(response.data, currencyCode),
     boardLabels,
     recordsAnalyzed,
     currencyCode,
@@ -219,6 +222,17 @@ function AssistantResponse({
               </div>
             ))}
           </div>
+        </section>
+      ) : null}
+
+      {presentation.structuredLines.length > 0 ? (
+        <section className="answer-section" aria-label="Authoritative structured results">
+          <p className="answer-section-label">Structured results</p>
+          <ul className="executive-list">
+            {presentation.structuredLines.map((line, index) => (
+              <li key={`${index}-${line}`}>{line}</li>
+            ))}
+          </ul>
         </section>
       ) : null}
 
