@@ -8,6 +8,7 @@ import {
   calculateWorkOrderHealth,
   dealCloseQuarterMetrics,
   findRiskyDeals,
+  getFounderAttentionFeed,
   largestDeals,
   pipelineByStage,
 } from "@/lib/analytics";
@@ -32,8 +33,9 @@ export async function loadExecutiveViewData() {
   const sectors = calculateSectorMetrics(snapshot.deals, snapshot.workOrders);
   const clients = buildClientIntelligence(snapshot.deals, snapshot.workOrders, asOfDate);
   const dataQuality = buildDataQualityReport(snapshot.deals, snapshot.workOrders, snapshot.normalizationIssues, asOfDate);
+  const attention = getFounderAttentionFeed(snapshot.deals, snapshot.workOrders, asOfDate);
 
-  return { snapshot, asOfDate, pipeline, workOrders, sectors, clients, dataQuality };
+  return { snapshot, asOfDate, pipeline, workOrders, sectors, clients, dataQuality, attention };
 }
 
 export async function loadPipelineViewData() {

@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 export default async function LeadershipPage() {
   const result = await loadSafely(loadLeadershipViewData, "The live leadership brief is temporarily unavailable. Please retry after the server connection is restored.");
   if (!result.data) {
-    return <div className="page"><PageHeader eyebrow="Leadership Brief" title="Decision-ready business brief" description="A compact executive narrative spanning pipeline, operations, receivables, attention items, and data quality." /><LeadershipBrief error={result.error} /></div>;
+    return <div className="page"><PageHeader eyebrow="Leadership Brief" title="Decision-ready business brief" description="Presentation-ready commercial, operational, cash, attention, and data-caveat views." /><LeadershipBrief error={result.error} /></div>;
   }
   const data = result.data;
-  return <div className="page"><PageHeader eyebrow="Leadership Brief" title="Decision-ready business brief" description="A compact executive narrative spanning pipeline, operations, receivables, attention items, and data quality." actions={<SourceStatus fetchedAt={data.snapshot.source.fetchedAt} boardNames={[data.snapshot.source.dealsBoardName, data.snapshot.source.workOrdersBoardName]} />} /><LeadershipBrief brief={data.brief} /></div>;
+  return <div className="page"><PageHeader eyebrow="Leadership Brief" title="Decision-ready business brief" description="Presentation-ready commercial, operational, cash, attention, and data-caveat views." actions={<SourceStatus fetchedAt={data.snapshot.source.fetchedAt} boardNames={[data.snapshot.source.dealsBoardName, data.snapshot.source.workOrdersBoardName]} recordsAnalyzed={data.brief.provenance.totalRecordsAnalyzed} />} /><LeadershipBrief brief={data.brief} currency={data.brief.currencyCode} /></div>;
 }

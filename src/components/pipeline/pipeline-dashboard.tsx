@@ -1,4 +1,11 @@
-import type { Deal, DealRisk, PipelineMetrics, QuarterMetric, SectorMetrics, StageMetric } from "@/types/domain";
+import type {
+  Deal,
+  DealRisk,
+  PipelineMetrics,
+  QuarterMetric,
+  SectorMetrics,
+  StageMetric,
+} from "@/types/domain";
 import { DataState } from "@/components/ui/data-state";
 import { DistributionBars } from "@/components/ui/distribution-bars";
 import { formatAmount, formatNumber } from "@/components/ui/formatters";
@@ -18,22 +25,49 @@ type PipelineDashboardProps = {
   error?: string | null;
 };
 
-export function PipelineDashboard({ metrics, stages, sectors, risks, largestDeals, quarters, currency, loading = false, error = null }: PipelineDashboardProps) {
+export function PipelineDashboard({
+  metrics,
+  stages,
+  sectors,
+  risks,
+  largestDeals,
+  quarters,
+  currency,
+  loading = false,
+  error = null,
+}: PipelineDashboardProps) {
   if (loading) return <DataState state="loading" title="Loading pipeline intelligence" />;
   if (error) return <DataState state="error" description={error} />;
-  if (!metrics) return <DataState state="empty" title="Pipeline contracts are ready" description="This page renders canonical PipelineMetrics, StageMetric, SectorMetrics, and DealRisk values without recomputing analytics in the browser." />;
+  if (!metrics) {
+    return (
+      <DataState
+        state="empty"
+        title="Pipeline contracts are ready"
+        description="This page renders canonical PipelineMetrics, StageMetric, SectorMetrics, and DealRisk values without recomputing analytics in the browser."
+      />
+    );
+  }
 
   const orderedStages = (stages ?? []).slice().sort((a, b) => b.totalValue - a.totalValue);
   const orderedSectors = (sectors ?? []).slice().sort((a, b) => b.openPipelineValue - a.openPipelineValue);
+  const coverage = metrics.openDeals
+    ? `${formatNumber(metrics.knownOpenValueDeals)} of ${formatNumber(metrics.openDeals)} open opportunities have known values.`
+    : "No open opportunities are currently reported.";
 
   return (
     <div className="dashboard-stack">
-      <div className="metric-grid metric-grid-five">
-        <MetricCard label="Open pipeline" value={formatAmount(metrics.openPipelineValue, currency)} hint={`${formatNumber(metrics.openDeals)} open deals`} />
+      <div className="metric-grid metric-grid-five executive-metric-grid">
+        <MetricCard label="Open pipeline" value={formatAmount(metrics.openPipelineValue, currency)} hint={coverage} />
         <MetricCard label="Active deals" value={formatNumber(metrics.activeDeals)} hint={`${formatNumber(metrics.totalDeals)} total deals`} />
         <MetricCard label="Won value" value={formatAmount(metrics.wonValue, currency)} hint={`${formatNumber(metrics.wonDeals)} won`} tone="positive" />
         <MetricCard label="Avg. open deal" value={formatAmount(metrics.averageOpenDealSize, currency)} hint={`${formatNumber(metrics.knownOpenValueDeals)} known values`} />
-        <MetricCard label="Unknown values" value={formatNumber(metrics.unknownOpenValueDeals)} hint="Open deals without value" tone={metrics.unknownOpenValueDeals > 0 ? "warning" : "neutral"} />
+        <MetricCard label="Unknown values" value={formatNumber(metrics.unknownOpenValueDeals)} hint="Open deals excluded from value averages" tone={metrics.unknownOpenValueDeals > 0 ? "warning" : "neutral"} />
+      </div>
+
+      <div className="confidence-band" role="note" aria-label="Pipeline data confidence">
+        <div><span className="confidence-label">Value coverage</span><strong>{coverage}</strong></div>
+        <div><span>Known open values</span><strong>{formatNumber(metrics.knownOpenValueDeals)}</strong></div>
+        <div><span>Missing open values</span><strong>{formatNumber(metrics.unknownOpenValueDeals)}</strong></div>
       </div>
 
       <div className="split-grid">
