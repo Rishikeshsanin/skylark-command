@@ -8,9 +8,14 @@ import { StatusPill } from "@/components/ui/status-pill";
 type ChatMessage = { id: string; role: "user" | "assistant"; prompt?: string; response?: AgentResponse };
 const suggestions = ["How is our pipeline looking?", "Which deals need attention?", "How is the energy sector performing?", "Which work orders are at risk?", "Which clients have both active projects and open deals?", "Prepare a leadership brief."];
 
-function metricEntries(data: unknown) {
+function metricEntries(data: unknown): Array<[string, string | number]> {
   if (!data || typeof data !== "object" || Array.isArray(data)) return [];
-  return Object.entries(data as Record<string, unknown>).filter(([, value]) => typeof value === "number" || typeof value === "string").slice(0, 6);
+  const entries: Array<[string, string | number]> = [];
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    if (typeof value === "number" || typeof value === "string") entries.push([key, value]);
+    if (entries.length === 6) break;
+  }
+  return entries;
 }
 function labelize(key: string) { return key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").replace(/^./, (char) => char.toUpperCase()); }
 
