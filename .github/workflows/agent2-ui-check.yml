@@ -20,3 +20,18 @@ jobs:
         run: npm run lint
       - name: Production build
         run: npm run build
+      - name: Install browser smoke dependency
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Browser smoke — desktop and mobile
+        run: |
+          npm start -- -H 127.0.0.1 > /tmp/skylark-next.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/copilot > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/copilot > /dev/null
+          node .github/scripts/agent2-browser-smoke.mjs
