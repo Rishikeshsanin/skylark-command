@@ -118,14 +118,14 @@ describe("structuredDataLines", () => {
       unknownWonValueDeals: 1,
     });
 
-    expect(output).toContain(`Won value: ${formatAmount(950, currencyCode)}`);
-    expect(output).toContain(`Open pipeline value: ${formatAmount(688, currencyCode)}`);
-    expect(output).toContain("Open deals: 49");
-    expect(output).toContain("Won deals: 165");
-    expect(output).toContain("Known open value deals: 47");
-    expect(output).toContain("Unknown open value deals: 2");
-    expect(output).toContain("Known won value deals: 164");
-    expect(output).toContain("Unknown won value deals: 1");
+    expect(output).toContain(`Won Value: ${formatAmount(950, currencyCode)}`);
+    expect(output).toContain(`Open Pipeline Value: ${formatAmount(688, currencyCode)}`);
+    expect(output).toContain("Open Deals: 49");
+    expect(output).toContain("Won Deals: 165");
+    expect(output).toContain("Known Open Value Deals: 47");
+    expect(output).toContain("Unknown Open Value Deals: 2");
+    expect(output).toContain("Known Won Value Deals: 164");
+    expect(output).toContain("Unknown Won Value Deals: 1");
   });
 
   it("visibly renders receivables and Work Order financial fields", () => {
@@ -138,17 +138,17 @@ describe("structuredDataLines", () => {
     });
 
     expect(output).toContain(`Receivables: ${formatAmount(360, currencyCode)}`);
-    expect(output).toContain(`Billed value incl Gst: ${formatAmount(500, currencyCode)}`);
-    expect(output).toContain(`Collected amount incl Gst: ${formatAmount(300, currencyCode)}`);
-    expect(output).toContain(`Amount to be billed incl Gst: ${formatAmount(200, currencyCode)}`);
-    expect(output).toContain("Unknown receivable count: 2");
+    expect(output).toContain(`Billed Value Incl Gst: ${formatAmount(500, currencyCode)}`);
+    expect(output).toContain(`Collected Amount Incl Gst: ${formatAmount(300, currencyCode)}`);
+    expect(output).toContain(`Amount To Be Billed Incl Gst: ${formatAmount(200, currencyCode)}`);
+    expect(output).toContain("Unknown Receivable Count: 2");
   });
 
   it.each([
-    ["won_value", "Highest won value", "Won value", formatAmount(950, currencyCode)],
-    ["open_pipeline", "Largest active pipeline", "Open pipeline value", formatAmount(688, currencyCode)],
-    ["work_order_execution_health", "Best project execution", "Execution risk score", "11"],
-    ["combined_importance", "Combined commercial + operational importance", "Combined exposure", formatAmount(1792, currencyCode)],
+    ["won_value", "Highest won value", "Won Value", formatAmount(950, currencyCode)],
+    ["open_pipeline", "Largest active pipeline", "Open Pipeline Value", formatAmount(688, currencyCode)],
+    ["work_order_execution_health", "Best project execution", "Execution Risk Score", "11"],
+    ["combined_importance", "Combined commercial + operational importance", "Combined Exposure", formatAmount(1792, currencyCode)],
   ] as const)("renders decisive values for %s rankings", (rankingType, basis, decisiveLabel, decisiveValue) => {
     const output = joined(rankingData(rankingType, basis));
 
