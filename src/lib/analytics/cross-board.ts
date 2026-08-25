@@ -1,4 +1,10 @@
-import type { ClientIntelligence, Deal, SectorMetrics, WorkOrder } from "../../types";
+import type {
+  ClientIntelligence,
+  CrossBoardClientSummary,
+  Deal,
+  SectorMetrics,
+  WorkOrder,
+} from "../../types";
 import { isActiveWorkOrder, isDelayedWorkOrder, isOpenDeal, normalizeLabel, roundAmount, sumKnown } from "./helpers";
 
 export function buildClientIntelligence(
@@ -54,6 +60,41 @@ export function buildClientIntelligence(
       b.receivables - a.receivables ||
       a.normalizedClientKey.localeCompare(b.normalizedClientKey),
   );
+}
+
+export function summarizeCrossBoardClients(
+  deals: Deal[],
+  workOrders: WorkOrder[],
+  asOfDate: string,
+): CrossBoardClientSummary {
+  const dealKeys = new Set(
+    deals
+      .filter((deal) => !deal.malformed && deal.normalizedClientKey)
+      .map((deal) => deal.normalizedClientKey as string),
+  );
+  const workOrderKeys = new Set(
+    workOrders
+      .filter((workOrder) => !workOrder.malformed && workOrder.normalizedClientKey)
+      .map((workOrder) => workOrder.normalizedClientKey as string),
+  );
+  const matchedKeys = [...workOrderKeys]
+    .filter((key) => dealKeys.has(key))
+    .sort();
+  const unmatchedWorkOrderClientKeys = [...workOrderKeys]
+    .filter((key) => !dealKeys.has(key))
+    .sort();
+  const matchedKeySet = new Set(matchedKeys);
+  const matchedClients = buildClientIntelligence(deals, workOrders, asOfDate)
+    .filter((client) => matchedKeySet.has(client.normalizedClientKey))
+    .sort((a, b) => a.normalizedClientKey.localeCompare(b.normalizedClientKey));
+
+  return {
+    totalUniqueWorkOrderClientKeys: workOrderKeys.size,
+    matchedUniqueWorkOrderClientKeys: matchedKeys.length,
+    unmatchedUniqueWorkOrderClientKeys: unmatchedWorkOrderClientKeys.length,
+    unmatchedWorkOrderClientKeys,
+    matchedClients,
+  };
 }
 
 export function clientsWithOpenDealsAndActiveWorkOrders(
