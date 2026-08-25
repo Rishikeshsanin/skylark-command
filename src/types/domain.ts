@@ -126,6 +126,7 @@ export interface DataQualityReport {
   malformedDeals: number;
   malformedWorkOrders: number;
   unmappedWorkOrderClients: number;
+  unmappedWorkOrderClientKeys: string[];
   issueCounts: DataQualityIssueCounts;
   issues: DataQualityIssue[];
 }
@@ -147,6 +148,8 @@ export interface PipelineMetrics {
   averageOpenDealSize: Nullable<number>;
   knownOpenValueDeals: number;
   unknownOpenValueDeals: number;
+  knownWonValueDeals: number;
+  unknownWonValueDeals: number;
 }
 
 export interface StageMetric {
@@ -230,6 +233,14 @@ export interface ClientIntelligence {
   hasOperationalRisk: boolean;
   hasCombinedCommercialOperationalRisk: boolean;
   operationalRiskReasons: string[];
+}
+
+export interface CrossBoardClientSummary {
+  totalUniqueWorkOrderClientKeys: number;
+  matchedUniqueWorkOrderClientKeys: number;
+  unmatchedUniqueWorkOrderClientKeys: number;
+  unmatchedWorkOrderClientKeys: string[];
+  matchedClients: ClientIntelligence[];
 }
 
 export interface LeadershipBriefData {
