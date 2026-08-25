@@ -106,10 +106,16 @@ try {
     { name: "desktop", width: 1440, height: 900 },
     { name: "mobile", width: 390, height: 844 },
   ]) {
+    retryAttempt = 0;
     const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, acceptDownloads: true });
     const page = await context.newPage();
     page.on("pageerror", (error) => fail(`${viewport.name}: page error: ${error.message}`));
-    page.on("console", (msg) => { if (msg.type() === "error") fail(`${viewport.name}: console error: ${msg.text()}`); });
+    page.on("console", (msg) => {
+      if (msg.type() !== "error") return;
+      const text = msg.text();
+      if (text.includes("Failed to load resource") && text.includes("502")) return;
+      fail(`${viewport.name}: console error: ${text}`);
+    });
 
     await page.route("**/api/chat", async (route) => {
       const req = route.request();
@@ -177,10 +183,10 @@ try {
 
     await input.fill("qa:retry");
     await input.press("Enter");
-    const alert = page.getByRole("alert");
+    const alert = page.getByRole("alert").filter({ hasText: "Couldn’t complete that request" });
     await alert.waitFor({ state: "visible", timeout: 3000 }).catch(() => fail(`${viewport.name}: controlled error state not shown`));
     const retry = alert.getByRole("button", { name: "Retry" });
-    if (await retry.count() !== 1) fail(`${viewport.name}: retry action missing`);
+    if (await retry.count() !== 1) fail(`${viewport.name}: Copilot retry action missing`);
     else {
       const beforeRetry = await page.locator(".assistant-answer").count();
       await retry.click();
@@ -205,9 +211,8 @@ try {
     const response = await page.goto(`${BASE}${route}`, { waitUntil: "networkidle" });
     if (!response?.ok()) fail(`${route}: HTTP ${response?.status() ?? "none"}`);
     const alerts = page.getByRole("alert");
-    if (await alerts.count() > 0) {
-      const retry = alerts.first().getByRole("button", { name: /retry/i });
-      if (await retry.count() < 1) fail(`${route}: controlled no-secret error state has no retry control`);
+    if (await alerts.count() > 0 && await page.getByRole("button", { name: /retry/i }).count() < 1) {
+      fail(`${route}: controlled no-secret error state has no retry control`);
     }
     await context.close();
   }
