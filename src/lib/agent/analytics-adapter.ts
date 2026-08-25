@@ -18,6 +18,7 @@ import {
   rankCustomersByOpenPipeline,
   rankCustomersByWonValue,
   rankCustomersByWorkOrderExecutionHealth,
+  summarizeCrossBoardClients,
 } from "@/lib/analytics";
 import {
   loadBusinessData,
@@ -28,6 +29,7 @@ import type {
   AgentResponse,
   AnalyticsResult,
   PeriodSectorResult,
+  SectorMetrics,
 } from "@/types";
 import type { QueryPlan } from "./schemas";
 
@@ -175,6 +177,32 @@ function filterSectorPeriod(
   };
 }
 
+function sortSectorMetricsByOpenPipeline<T extends {
+  sector: string;
+  openPipelineValue: number;
+  openDealCount: number;
+}>(metrics: T[]): T[] {
+  return [...metrics].sort(
+    (a, b) =>
+      b.openPipelineValue - a.openPipelineValue ||
+      b.openDealCount - a.openDealCount ||
+      a.sector.localeCompare(b.sector),
+  );
+}
+
+function applyOpenPipelineSectorFocus(data: PeriodSectorResult): PeriodSectorResult {
+  const sortSnapshot = (snapshot: PeriodSectorResult["result"]) =>
+    snapshot
+      ? { ...snapshot, sectors: sortSectorMetricsByOpenPipeline(snapshot.sectors) }
+      : null;
+
+  return {
+    ...data,
+    result: sortSnapshot(data.result),
+    latestAvailableResult: sortSnapshot(data.latestAvailableResult),
+  };
+}
+
 function sectorPeriodResult(
   snapshot: BusinessDataSnapshot,
   plan: QueryPlan,
@@ -203,7 +231,10 @@ function sectorPeriodResult(
   }
 
   if (!periodResult) return null;
-  const selected = filterSectorPeriod(periodResult, plan.sector);
+  let selected = filterSectorPeriod(periodResult, plan.sector);
+  if (plan.focus === "sector_open_pipeline") {
+    selected = applyOpenPipelineSectorFocus(selected);
+  }
   return { data: selected, caveats: selected.caveats };
 }
 
@@ -247,12 +278,16 @@ export function executePlanAgainstSnapshot(
         snapshot.deals,
         snapshot.workOrders,
       );
+      const focusedMetrics: SectorMetrics[] =
+        plan.focus === "sector_open_pipeline"
+          ? sortSectorMetricsByOpenPipeline(metrics)
+          : metrics;
       const selected = plan.sector
-        ? metrics.filter(
+        ? focusedMetrics.filter(
             (metric) =>
               metric.sector.toLowerCase() === plan.sector?.toLowerCase(),
           )
-        : metrics;
+        : focusedMetrics;
       result = {
         data: selected,
         caveats:
@@ -328,6 +363,20 @@ export function executePlanAgainstSnapshot(
 
       if (ranking) {
         result = { data: ranking, caveats: ranking.caveats };
+        break;
+      }
+
+      if (plan.focus === "cross_board_presence") {
+        result = {
+          data: summarizeCrossBoardClients(
+            snapshot.deals,
+            snapshot.workOrders,
+            asOfDate,
+          ),
+          caveats: [
+            "Cross-board matching uses exact normalized client keys only; no fuzzy matching is attempted.",
+          ],
+        };
         break;
       }
 
