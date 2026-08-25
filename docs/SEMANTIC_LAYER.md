@@ -75,4 +75,4 @@ Policy version `1.0.0` uses documented thresholds. The overall class is the wors
 - `What are receivables?`
 - `Which sector has the largest open opportunity?`
 
-These definitions map to existing `QueryPlan` values and execute through `executePlanAgainstSnapshot`, preserving the same deterministic analytics used by Founder Copilot.
+These definitions retain the existing `QueryPlan` mappings while invoking the same pure canonical analytics functions used by the product. The semantic layer only selects and annotates authoritative outputs; it does not reimplement business arithmetic.
