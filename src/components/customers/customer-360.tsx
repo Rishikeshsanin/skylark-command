@@ -1,7 +1,10 @@
 import type { Customer360 } from "@/types";
 import { formatAmountFull, formatDateTime, formatNumber } from "@/components/ui/formatters";
+import { DistributionBars } from "@/components/ui/distribution-bars";
 import { Panel } from "@/components/ui/panel";
 import { StatusPill } from "@/components/ui/status-pill";
+import { StackedValueBar } from "@/components/visualization/stacked-value-bar";
+import { TrendChart } from "@/components/visualization/trend-chart";
 
 export function Customer360View({ customer }: { customer: Customer360 }) {
   return (
@@ -49,14 +52,18 @@ export function Customer360View({ customer }: { customer: Customer360 }) {
           </div>
           <div className="customer-subsection">
             <h3>Deal stages</h3>
-            <div className="compact-list">
-              {customer.commercial.dealStages.map((stage) => (
-                <div key={stage.stage}>
-                  <div><strong>{stage.stage}</strong><span>{formatNumber(stage.dealCount)} deals · {formatNumber(stage.unknownValueDeals)} unknown values</span></div>
-                  <div className="compact-value"><strong>{formatAmountFull(stage.knownValue, "INR")}</strong></div>
-                </div>
-              ))}
-            </div>
+            <DistributionBars
+              ariaLabel={`Deal stage value distribution for ${customer.normalizedClientKey}`}
+              items={customer.commercial.dealStages.map((stage, index) => ({
+                label: stage.stage,
+                value: stage.knownValue,
+                secondary: `${formatAmountFull(stage.knownValue, "INR")} · ${formatNumber(stage.dealCount)} deals`,
+                detail: `${formatAmountFull(stage.knownValue, "INR")} known value, ${formatNumber(stage.dealCount)} deals, ${formatNumber(stage.unknownValueDeals)} unknown values`,
+                rank: index + 1,
+                tone: "info",
+              }))}
+              emptyLabel="No Deal stage values are available for this customer."
+            />
           </div>
         </Panel>
 
@@ -69,10 +76,41 @@ export function Customer360View({ customer }: { customer: Customer360 }) {
             <div><span>To be billed incl. GST</span><strong>{formatAmountFull(customer.cash.amountToBeBilledInclGst, "INR")}</strong></div>
             <div><span>AR priority Work Orders</span><strong>{formatNumber(customer.cash.arPriorityWorkOrders)}</strong></div>
           </div>
+          <div className="cash-composition-grid customer-cash-composition">
+            <StackedValueBar
+              ariaLabel={`Billing position for ${customer.normalizedClientKey}`}
+              totalLabel="Known WO value incl. GST"
+              formattedTotal={formatAmountFull(customer.cash.knownWorkOrderValueInclGst, "INR")}
+              segments={[
+                { label: "Billed incl. GST", value: customer.cash.billedValueInclGst, formattedValue: formatAmountFull(customer.cash.billedValueInclGst, "INR"), tone: "info" },
+                { label: "To be billed incl. GST", value: customer.cash.amountToBeBilledInclGst, formattedValue: formatAmountFull(customer.cash.amountToBeBilledInclGst, "INR"), tone: "warning" },
+              ]}
+              caption="Supplied billing values only; unknown Work Order amounts remain disclosed above."
+            />
+            <StackedValueBar
+              ariaLabel={`Collection position for ${customer.normalizedClientKey}`}
+              segments={[
+                { label: "Collected incl. GST", value: customer.cash.collectedAmountInclGst, formattedValue: formatAmountFull(customer.cash.collectedAmountInclGst, "INR"), tone: "positive" },
+                { label: "Receivables", value: customer.cash.receivables, formattedValue: formatAmountFull(customer.cash.receivables, "INR"), tone: "warning" },
+              ]}
+              caption="Widths compare canonical cash values for presentation; exact amounts remain authoritative."
+            />
+          </div>
         </Panel>
       </div>
 
       <Panel title="Operations" description="Current project execution posture and timeline evidence.">
+        <div className="customer-operations-chart">
+          <DistributionBars
+            ariaLabel={`Work Order execution status distribution for ${customer.normalizedClientKey}`}
+            items={Object.entries(customer.operations.executionStatusDistribution).map(([label, value]) => ({
+              label,
+              value,
+              tone: /complete|done/i.test(label) ? "positive" : /delay|pause|stuck/i.test(label) ? "warning" : "info",
+            }))}
+            emptyLabel="No Work Order execution status values are available for this customer."
+          />
+        </div>
         {customer.operations.workOrders.length ? (
           <div className="table-wrap">
             <table>
@@ -150,22 +188,45 @@ export function Customer360View({ customer }: { customer: Customer360 }) {
 
       <Panel title="History" description="Customer metrics over persisted snapshots when history exists.">
         {customer.history.length > 1 ? (
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Snapshot</th><th>Open / won deals</th><th>Known pipeline</th><th>Active / delayed WOs</th><th>Receivables</th></tr></thead>
-              <tbody>
-                {customer.history.map((point) => (
-                  <tr key={point.snapshotId}>
-                    <td><strong>{formatDateTime(point.capturedAt)}</strong><small>{point.snapshotId}</small></td>
-                    <td>{formatNumber(point.openDeals)} / {formatNumber(point.wonDeals)}</td>
-                    <td>{formatAmountFull(point.knownOpenPipelineValue, "INR")}</td>
-                    <td>{formatNumber(point.activeWorkOrders)} / {formatNumber(point.delayedWorkOrders)}</td>
-                    <td>{formatAmountFull(point.receivables, "INR")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="customer-trend-grid">
+              <TrendChart
+                ariaLabel={`Commercial value history for ${customer.normalizedClientKey}`}
+                labels={customer.history.map((point) => point.capturedAt.slice(0, 10))}
+                series={[
+                  { label: "Known open pipeline", tone: "info", values: customer.history.map((point) => ({ value: point.knownOpenPipelineValue, formattedValue: formatAmountFull(point.knownOpenPipelineValue, "INR") })) },
+                  { label: "Known won value", tone: "positive", values: customer.history.map((point) => ({ value: point.knownWonValue, formattedValue: formatAmountFull(point.knownWonValue, "INR") })) },
+                ]}
+                caption="Canonical snapshots in supplied chronological order; the chart does not interpolate missing history."
+              />
+              <TrendChart
+                ariaLabel={`Cash history for ${customer.normalizedClientKey}`}
+                labels={customer.history.map((point) => point.capturedAt.slice(0, 10))}
+                series={[
+                  { label: "Billed incl. GST", tone: "info", values: customer.history.map((point) => ({ value: point.billedValueInclGst, formattedValue: formatAmountFull(point.billedValueInclGst, "INR") })) },
+                  { label: "Collected incl. GST", tone: "positive", values: customer.history.map((point) => ({ value: point.collectedAmountInclGst, formattedValue: formatAmountFull(point.collectedAmountInclGst, "INR") })) },
+                  { label: "Receivables", tone: "warning", values: customer.history.map((point) => ({ value: point.receivables, formattedValue: formatAmountFull(point.receivables, "INR") })) },
+                ]}
+                caption="Every point is an exact deterministic snapshot value; hover or focus a point for its full amount."
+              />
+            </div>
+            <div className="table-wrap customer-history-table" tabIndex={0} aria-label="Exact Customer 360 snapshot history table">
+              <table>
+                <thead><tr><th>Snapshot</th><th>Open / won deals</th><th>Known pipeline</th><th>Active / delayed WOs</th><th>Receivables</th></tr></thead>
+                <tbody>
+                  {customer.history.map((point) => (
+                    <tr key={point.snapshotId}>
+                      <td><strong>{formatDateTime(point.capturedAt)}</strong><small>{point.snapshotId}</small></td>
+                      <td>{formatNumber(point.openDeals)} / {formatNumber(point.wonDeals)}</td>
+                      <td>{formatAmountFull(point.knownOpenPipelineValue, "INR")}</td>
+                      <td>{formatNumber(point.activeWorkOrders)} / {formatNumber(point.delayedWorkOrders)}</td>
+                      <td>{formatAmountFull(point.receivables, "INR")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : <p className="muted-copy">Only one distinct snapshot is currently available. Historical Customer 360 trends will appear when Agent 1 snapshot history is wired.</p>}
       </Panel>
     </div>

@@ -5,6 +5,7 @@ import { FinancialFlow } from "@/components/ui/financial-flow";
 import { formatAmount, formatAmountFull, formatNumber } from "@/components/ui/formatters";
 import { MetricCard } from "@/components/ui/metric-card";
 import { Panel } from "@/components/ui/panel";
+import { StackedValueBar } from "@/components/visualization/stacked-value-bar";
 
 type OperationsDashboardProps = {
   health?: WorkOrderHealth | null;
@@ -48,8 +49,8 @@ export function OperationsDashboard({
       </div>
 
       <div className="split-grid">
-        <Panel title="Execution status" description="Current Work Order execution distribution."><DistributionBars ariaLabel="Work Order execution status distribution" items={Object.entries(health.executionStatusDistribution).map(([label, value]) => ({ label, value }))} /></Panel>
-        <Panel title="Billing status" description="Billing state distribution from normalized Work Orders."><DistributionBars ariaLabel="Work Order billing status distribution" items={Object.entries(health.billingStatusDistribution).map(([label, value]) => ({ label, value }))} /></Panel>
+        <Panel title="Execution status" description="Current Work Order execution distribution."><DistributionBars ariaLabel="Work Order execution status distribution" items={Object.entries(health.executionStatusDistribution).map(([label, value]) => ({ label, value, tone: /complete|done/i.test(label) ? "positive" : /delay|pause|stuck/i.test(label) ? "warning" : "info" }))} /></Panel>
+        <Panel title="Billing status" description="Billing state distribution from normalized Work Orders."><DistributionBars ariaLabel="Work Order billing status distribution" items={Object.entries(health.billingStatusDistribution).map(([label, value]) => ({ label, value, tone: /complete|billed|done/i.test(label) ? "positive" : /pending|due|update|unknown/i.test(label) ? "warning" : "info" }))} /></Panel>
       </div>
 
       <div className="split-grid">
@@ -62,6 +63,26 @@ export function OperationsDashboard({
             receivables={health.receivables}
             currency={currency}
           />
+          <div className="cash-composition-grid">
+            <StackedValueBar
+              ariaLabel="Billing position using supplied billed and to-be-billed values"
+              totalLabel="Supplied total WO value"
+              formattedTotal={formatAmountFull(health.totalAmountInclGst, currency)}
+              segments={[
+                { label: "Billed incl. GST", value: health.billedValueInclGst, formattedValue: formatAmountFull(health.billedValueInclGst, currency), tone: "info" },
+                { label: "To be billed incl. GST", value: health.amountToBeBilledInclGst, formattedValue: formatAmountFull(health.amountToBeBilledInclGst, currency), tone: "warning" },
+              ]}
+              caption="Widths compare the two supplied billing-position values; they do not create a new financial total."
+            />
+            <StackedValueBar
+              ariaLabel="Collection position using supplied collected and receivable values"
+              segments={[
+                { label: "Collected incl. GST", value: health.collectedAmountInclGst, formattedValue: formatAmountFull(health.collectedAmountInclGst, currency), tone: "positive" },
+                { label: "Receivables", value: health.receivables, formattedValue: formatAmountFull(health.receivables, currency), tone: "warning" },
+              ]}
+              caption="Exact deterministic cash values remain visible; segment widths are presentation-only."
+            />
+          </div>
         </Panel>
         <Panel title="Work Orders by sector" description="Sector mix by Work Order count."><DistributionBars ariaLabel="Work Order count by sector" items={sectorRows.map((sector) => ({ label: sector.sector || "Unmapped", value: sector.workOrderCount, secondary: `${formatNumber(sector.workOrderCount)} WOs · ${formatAmount(sector.receivables, currency)} AR`, detail: `${formatNumber(sector.workOrderCount)} Work Orders and ${formatAmountFull(sector.receivables, currency)} known receivables` }))} /></Panel>
       </div>

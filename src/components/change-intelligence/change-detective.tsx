@@ -3,6 +3,7 @@ import type { ChangeIntelligenceResult, ChangeMetricValue, ChangeSignal } from "
 import { formatAmountFull, formatDateTime, formatNumber } from "@/components/ui/formatters";
 import { Panel } from "@/components/ui/panel";
 import { StatusPill } from "@/components/ui/status-pill";
+import { WaterfallChart } from "@/components/visualization/waterfall-chart";
 
 function formatSignalValue(signal: ChangeSignal, value: ChangeMetricValue) {
   if (value === null) return "Unavailable";
@@ -95,6 +96,20 @@ export function ChangeDetective({ result }: { result: ChangeIntelligenceResult }
                     <span className="change-entity-chip">{signal.affected.sector}</span>
                   ) : null}
                 </div>
+
+                {typeof signal.oldValue === "number" && typeof signal.newValue === "number" && signal.delta !== null ? (
+                  <div className="change-waterfall-frame">
+                    <WaterfallChart
+                      ariaLabel={`${signal.title}: supplied ${signal.metric} movement from previous snapshot to current snapshot`}
+                      oldValue={signal.oldValue}
+                      newValue={signal.newValue}
+                      delta={signal.delta}
+                      formattedOld={formatSignalValue(signal, signal.oldValue)}
+                      formattedNew={formatSignalValue(signal, signal.newValue)}
+                      formattedDelta={formatSignalValue(signal, signal.delta)}
+                    />
+                  </div>
+                ) : null}
 
                 <div className="change-value-grid">
                   <div><span>Old</span><strong>{formatSignalValue(signal, signal.oldValue)}</strong></div>
