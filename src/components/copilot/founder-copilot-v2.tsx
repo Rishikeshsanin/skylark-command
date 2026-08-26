@@ -80,7 +80,12 @@ export function FounderCopilotV2() {
     const thread = threadRef.current;
     if (thread) {
       if (force || prefersReducedMotion()) {
+        const previousScrollBehavior = thread.style.scrollBehavior;
+        thread.style.scrollBehavior = "auto";
         thread.scrollTop = thread.scrollHeight;
+        requestAnimationFrame(() => {
+          thread.style.scrollBehavior = previousScrollBehavior;
+        });
       } else {
         thread.scrollTo({
           top: thread.scrollHeight,
