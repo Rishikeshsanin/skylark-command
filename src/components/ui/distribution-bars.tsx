@@ -1,7 +1,14 @@
 import { formatNumber } from "./formatters";
 
 type DistributionBarsProps = {
-  items: Array<{ label: string; value: number; secondary?: string; detail?: string }>;
+  items: Array<{
+    label: string;
+    value: number;
+    secondary?: string;
+    detail?: string;
+    rank?: number;
+    tone?: "neutral" | "positive" | "warning" | "critical" | "info";
+  }>;
   emptyLabel?: string;
   ariaLabel?: string;
 };
@@ -16,17 +23,19 @@ export function DistributionBars({
 
   return (
     <div className="distribution-list" role="list" aria-label={ariaLabel}>
-      {items.map((item) => {
-        const width = maximum > 0 ? Math.max((item.value / maximum) * 100, 2) : 0;
+      {items.map((item, index) => {
+        const width = maximum > 0 && item.value > 0 ? Math.max((item.value / maximum) * 100, 2) : 0;
+        const rankLabel = item.rank ? `Rank ${item.rank}, ` : "";
         return (
           <div
-            className="distribution-row"
-            key={item.label}
+            className={`distribution-row chart-${item.tone ?? "neutral"}`}
+            key={`${item.label}-${index}`}
             role="listitem"
-            aria-label={`${item.label}: ${item.detail ?? item.secondary ?? formatNumber(item.value)}`}
+            tabIndex={0}
+            aria-label={`${rankLabel}${item.label}: ${item.detail ?? item.secondary ?? formatNumber(item.value)}`}
           >
             <div className="distribution-meta">
-              <span>{item.label}</span>
+              <span>{item.rank ? <i aria-hidden="true">{item.rank}</i> : null}{item.label}</span>
               <span className="tabular" title={item.detail}>{item.secondary ?? formatNumber(item.value)}</span>
             </div>
             <div className="distribution-track" aria-hidden="true">

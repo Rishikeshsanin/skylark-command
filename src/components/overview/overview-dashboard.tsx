@@ -130,11 +130,13 @@ export function OverviewDashboard({
         <Panel title="Pipeline by sector" description="Open pipeline value across the leading sectors.">
           <DistributionBars
             ariaLabel="Open pipeline value by sector"
-            items={sectorRows.map((sector) => ({
+            items={sectorRows.map((sector, index) => ({
               label: sector.sector || "Unmapped",
               value: sector.openPipelineValue,
               secondary: formatAmount(sector.openPipelineValue, resolvedCurrency),
               detail: formatAmountFull(sector.openPipelineValue, resolvedCurrency),
+              rank: index + 1,
+              tone: "info" as const,
             }))}
             emptyLabel="No sector metrics available."
           />
@@ -143,11 +145,11 @@ export function OverviewDashboard({
           <DistributionBars
             ariaLabel="Work Order operational posture"
             items={[
-              { label: "Completed", value: workOrders.completedWorkOrders },
-              { label: "Ongoing", value: workOrders.ongoingWorkOrders },
-              { label: "Not started", value: workOrders.notStartedWorkOrders },
-              { label: "Delayed", value: workOrders.delayedWorkOrders },
-              { label: "Paused", value: workOrders.pausedWorkOrders },
+              { label: "Completed", value: workOrders.completedWorkOrders, tone: "positive" },
+              { label: "Ongoing", value: workOrders.ongoingWorkOrders, tone: "info" },
+              { label: "Not started", value: workOrders.notStartedWorkOrders, tone: "neutral" },
+              { label: "Delayed", value: workOrders.delayedWorkOrders, tone: "warning" },
+              { label: "Paused", value: workOrders.pausedWorkOrders, tone: "critical" },
             ]}
           />
           <div className="cash-callout">

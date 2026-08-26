@@ -6,6 +6,7 @@ import "./product-polish.css";
 import "./change-intelligence.css";
 import "./v2-design-system.css";
 import "./v2-trust-grammar.css";
+import "./visualization-system.css";
 import { AppShell } from "@/components/shell/app-shell";
 
 export const metadata: Metadata = {

@@ -98,10 +98,10 @@ export function PipelineDashboard({
 
       <div className="split-grid">
         <Panel title="Pipeline by stage" description="Known value by the normalized deal stage supplied by analytics.">
-          <DistributionBars ariaLabel="Known pipeline value by deal stage" items={orderedStages.map((stage) => ({ label: stage.stage || "Unmapped", value: stage.totalValue, secondary: `${formatAmount(stage.totalValue, currency)} · ${formatNumber(stage.dealCount)} deals`, detail: `${formatAmountFull(stage.totalValue, currency)} across ${formatNumber(stage.dealCount)} deals` }))} />
+          <DistributionBars ariaLabel="Known pipeline value by deal stage" items={orderedStages.map((stage, index) => ({ label: stage.stage || "Unmapped", value: stage.totalValue, secondary: `${formatAmount(stage.totalValue, currency)} · ${formatNumber(stage.dealCount)} deals`, detail: `${formatAmountFull(stage.totalValue, currency)} across ${formatNumber(stage.dealCount)} deals`, rank: index + 1, tone: "info" }))} />
         </Panel>
         <Panel title="Pipeline by sector" description="Known open opportunity value by sector.">
-          <DistributionBars ariaLabel="Known open pipeline value by sector" items={orderedSectors.slice(0, 8).map((sector) => ({ label: sector.sector || "Unmapped", value: sector.openPipelineValue, secondary: `${formatAmount(sector.openPipelineValue, currency)} · ${formatNumber(sector.openDealCount)} open`, detail: `${formatAmountFull(sector.openPipelineValue, currency)} across ${formatNumber(sector.openDealCount)} open opportunities` }))} />
+          <DistributionBars ariaLabel="Known open pipeline value by sector" items={orderedSectors.slice(0, 8).map((sector, index) => ({ label: sector.sector || "Unmapped", value: sector.openPipelineValue, secondary: `${formatAmount(sector.openPipelineValue, currency)} · ${formatNumber(sector.openDealCount)} open`, detail: `${formatAmountFull(sector.openPipelineValue, currency)} across ${formatNumber(sector.openDealCount)} open opportunities`, rank: index + 1, tone: "info" }))} />
         </Panel>
       </div>
 

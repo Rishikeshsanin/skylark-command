@@ -8,6 +8,7 @@ import { MetricCard } from "@/components/ui/metric-card";
 import { Panel } from "@/components/ui/panel";
 import { StatusPill } from "@/components/ui/status-pill";
 import { VisualFlow } from "@/components/ui/visual-flow";
+import { DistributionDonut } from "@/components/visualization/distribution-donut";
 
 const ISSUE_BATCH_SIZE = 24;
 const issueFilters = ["all", "error", "warning", "info"] as const;
@@ -55,16 +56,35 @@ export function DataHealthDashboard({ report, loading = false, error = null }: D
       </div>
 
       <Panel title="Data trust flow" description="How source records become founder-ready intelligence while deterministic boundaries remain visible.">
-        <VisualFlow
-          ariaLabel="Data trust flow from monday.com through normalization and deterministic analytics to optional explanation"
-          nodes={[
-            { eyebrow: "monday.com", value: `${formatNumber(report.totalDeals)} deals`, detail: `${formatNumber(report.totalWorkOrders)} Work Orders`, tone: "info" },
-            { eyebrow: "Normalization", value: `${formatNumber(report.malformedDeals)} malformed deals`, detail: `${formatNumber(report.malformedWorkOrders)} malformed Work Orders`, tone: report.malformedDeals || report.malformedWorkOrders ? "warning" : "positive" },
-            { eyebrow: "Deterministic analytics", value: `${formatNumber(report.issueCounts.warning)} warnings`, detail: `${formatNumber(report.issueCounts.error)} errors · ${formatNumber(report.unmappedWorkOrderClients)} unmapped WO clients`, tone: report.issueCounts.error ? "critical" : "warning" },
-            { eyebrow: "Executive explanation", value: "Gemini optional", detail: "Explanation only · no business arithmetic", tone: "neutral" },
-          ]}
-          caption="The UI presents the supplied quality report and never converts missing records into invented business values."
-        />
+        <div className="data-health-visual-grid">
+          <VisualFlow
+            ariaLabel="Data trust flow from monday.com through normalization and deterministic analytics to optional explanation"
+            nodes={[
+              { eyebrow: "monday.com", value: `${formatNumber(report.totalDeals)} deals`, detail: `${formatNumber(report.totalWorkOrders)} Work Orders`, tone: "info" },
+              { eyebrow: "Normalization", value: `${formatNumber(report.malformedDeals)} malformed deals`, detail: `${formatNumber(report.malformedWorkOrders)} malformed Work Orders`, tone: report.malformedDeals || report.malformedWorkOrders ? "warning" : "positive" },
+              { eyebrow: "Deterministic analytics", value: `${formatNumber(report.issueCounts.warning)} warnings`, detail: `${formatNumber(report.issueCounts.error)} errors · ${formatNumber(report.unmappedWorkOrderClients)} unmapped WO clients`, tone: report.issueCounts.error ? "critical" : "warning" },
+              { eyebrow: "Executive explanation", value: "Gemini optional", detail: "Explanation only · no business arithmetic", tone: "neutral" },
+            ]}
+            caption="The UI presents the supplied quality report and never converts missing records into invented business values."
+          />
+          <div className="data-health-donut-frame">
+            <div>
+              <strong>Issue severity mix</strong>
+              <span>Exact supplied notice counts</span>
+            </div>
+            <DistributionDonut
+              ariaLabel={`Quality issue severity distribution: ${formatNumber(report.issueCounts.error)} errors, ${formatNumber(report.issueCounts.warning)} warnings, ${formatNumber(report.issueCounts.info)} information notices`}
+              centerLabel="notices"
+              centerValue={formatNumber(report.issues.length)}
+              items={[
+                { label: "Errors", value: report.issueCounts.error, formattedValue: formatNumber(report.issueCounts.error), tone: "critical" },
+                { label: "Warnings", value: report.issueCounts.warning, formattedValue: formatNumber(report.issueCounts.warning), tone: "warning" },
+                { label: "Information", value: report.issueCounts.info, formattedValue: formatNumber(report.issueCounts.info), tone: "info" },
+              ]}
+              emptyDescription="The supplied quality report contains no error, warning, or information notices."
+            />
+          </div>
+        </div>
         {report.unmappedWorkOrderClientKeys.length > 0 && (
           <p className="unmapped-key-note"><strong>Unmapped Work Order client keys:</strong> {report.unmappedWorkOrderClientKeys.join(", ")}</p>
         )}

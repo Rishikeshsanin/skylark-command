@@ -73,6 +73,8 @@ describe("dashboard presentation contracts", () => {
     expect(html).toContain("Exact ₹3,62,91,748.87");
     expect(html).toContain("No Work Orders have unknown receivable values.");
     expect(html).toContain("the visual does not derive financial totals");
+    expect(html).toContain("Billing position using supplied billed and to-be-billed values");
+    expect(html).toContain("Widths compare the two supplied billing-position values; they do not create a new financial total.");
   });
 
   it("initially limits Data Health notices while preserving severity filters", () => {
@@ -97,6 +99,7 @@ describe("dashboard presentation contracts", () => {
     }));
 
     expect(html).toContain("Data trust flow");
+    expect(html).toContain("Quality issue severity distribution: 1 errors, 29 warnings, 0 information notices");
     expect(html).toContain("COMPANY042");
     expect(html).toContain('aria-label="Filter quality notices by severity"');
     expect(html).toContain("Quality issue 24");
