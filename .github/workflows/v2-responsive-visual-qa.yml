@@ -1,0 +1,86 @@
+name: V2 Responsive Visual QA
+
+on:
+  push:
+    branches:
+      - v2/responsive-polish
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-responsive-visual-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Reproducible install
+        run: npm ci
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install browser QA dependency
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Start deterministic QA server
+        env:
+          MONDAY_API_TOKEN: qa-read-only-browser-fixture
+          MONDAY_DEALS_BOARD_ID: "5030844099"
+          MONDAY_WORK_ORDERS_BOARD_ID: "5030844103"
+          NODE_OPTIONS: --require=${{ github.workspace }}/.github/scripts/v2-qa-monday-fetch.cjs
+        run: |
+          npm start -- -H 127.0.0.1 > /tmp/skylark-v2-qa.log 2>&1 &
+          echo $! > /tmp/skylark-v2-qa.pid
+          for attempt in {1..40}; do
+            if curl -fsS http://127.0.0.1:3000/api/health >/tmp/v2-health.json; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/skylark-v2-qa.log
+          exit 1
+
+      - name: Chromium responsive visual and accessibility QA
+        run: node .github/scripts/v2-responsive-visual-qa.mjs
+
+      - name: Server diagnostics
+        if: failure()
+        run: cat /tmp/skylark-v2-qa.log || true
+
+      - name: Upload visual QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-responsive-visual-qa
+          path: artifacts/v2-responsive-qa
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Stop QA server
+        if: always()
+        run: |
+          if test -f /tmp/skylark-v2-qa.pid; then
+            kill "$(cat /tmp/skylark-v2-qa.pid)" || true
+          fi
