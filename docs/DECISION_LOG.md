@@ -1,75 +1,123 @@
-# Skylark Command — Decision Log
+# Decision Log
 
-This log records the decisions that materially affect trust, evaluator behavior, and production readiness. Application RC3 is `039cadfda8678ff82e105bf5fea2da72937c18c6`.
+This log records product and engineering decisions that materially affect correctness, trust, and maintainability.
 
-## 1. Deterministic BI before LLM
+## 1. Deterministic analytics own business truth
 
-**Decision:** TypeScript owns normalization, joins, filters, period selection, arithmetic, rankings, risk flags, and aggregations. The LLM receives only an already-computed analytical result to explain.
+**Decision:** TypeScript owns normalization, joins, filters, arithmetic, rankings, period semantics, change deltas, and scenario deltas.
 
-**Reason:** Founder-facing metrics must be repeatable, inspectable, and unit-testable. Model wording or provider availability cannot determine business truth.
+**Reason:** Executive metrics must be reproducible, inspectable, and unit-testable. Provider wording or availability cannot determine a business number.
 
-## 2. Live monday.com is the runtime source
+## 2. Live monday.com is a source system, not a write target
 
-**Decision:** The application fetches both monday.com boards at runtime with server-side pagination and `cache: "no-store"`. Excel/CSV assignment data is not embedded in the product.
+**Decision:** The application reads configured monday.com boards server-side and rejects mutation documents in the analytical source client.
 
-**Reason:** A live BI product must reflect the configured source rather than a stale snapshot. The documented golden baseline is acceptance evidence, not a hardcoded dataset.
+**Reason:** Decision support should not silently mutate operational truth. Scenarios remain isolated from source data.
 
-## 3. monday.com remains read-only
+## 3. Unknown data stays unknown
 
-**Decision:** The shared client exposes query/fetch behavior and rejects GraphQL documents containing mutations.
+**Decision:** Missing or malformed numeric/date values normalize to `null`. Known-only monetary sums disclose incomplete coverage where relevant.
 
-**Reason:** The assignment requires read-only access, and an executive analysis surface should not be able to change operational source records.
+**Reason:** Converting missing values to zero would create false precision and can materially distort executive conclusions.
 
-## 4. Gemini explains; it does not calculate
+## 4. Cross-board customer matching is exact after normalization
 
-**Decision:** Optional `gemini-2.5-flash-lite` output is limited to qualitative executive narration. Deterministic `AgentResponse.data` remains authoritative. `GEMINI_API_KEY` is preferred; `AI_API_KEY` is a backward-compatible fallback.
+**Decision:** Known client-code variants are normalized deterministically and joined by exact key equality. Unknown identities are not fuzzily guessed.
 
-**Reason:** AI can improve interpretation without becoming a non-deterministic calculator or a dependency for core BI.
+**Reason:** A visible unmatched customer is safer than an invisible false join.
 
-## 5. Numeric prose has a trust guard
+## 5. Time-dependent analytics use explicit time semantics
 
-**Decision:** Generated explanation is schema-validated and rejected if it contains numeric characters. Numeric values are rendered from structured deterministic data.
+**Decision:** Analytics that depend on “current”, delay, staleness, or quarter receive explicit analysis time/date inputs where appropriate.
 
-**Reason:** This prevents model prose from inventing, rounding, or silently changing a pipeline, revenue, receivables, count, date, or percentage.
+**Reason:** Results remain deterministic and testable rather than depending on hidden wall-clock behavior.
 
-## 6. Provider failure has a deterministic fallback
+## 6. Current-period absence is not zero performance
 
-**Decision:** Missing provider configuration, timeout, rate limit, network failure, invalid schema, or numeric-guard failure returns a deterministic explanation while preserving the analytical data.
+**Decision:** A requested period with no usable records is represented as no data, optionally with latest-available context.
 
-**Reason:** A provider outage must degrade narration, not the answer or application availability.
+**Reason:** “No observations” and “zero business” are different facts.
 
-## 7. Unknown data stays unknown
+## 7. Historical intelligence requires captured history
 
-**Decision:** Missing or malformed numeric/date values normalize to `null`. Monetary totals sum known values only, and available known/unknown coverage counts remain visible. Known won value is not described as complete historical revenue.
+**Decision:** V2 stores successful point-in-time normalized snapshots in PostgreSQL and queries them through a temporal-store abstraction.
 
-**Reason:** Imputing zero or silently dropping coverage language would create false executive confidence.
+**Reason:** A current-state API cannot truthfully reconstruct a previous week after the fact. Historical questions require actual historical evidence.
 
-## 8. “Best customers” requires clarification
+## 8. No synthetic history
 
-**Decision:** The copilot asks the evaluator to choose highest won value, largest active pipeline, best project execution, or combined commercial + operational importance. Controlled selections map to deterministic ranking functions.
+**Decision:** When historical snapshot coverage is sparse or absent, Change Intelligence reports the limitation rather than generating a prior state.
 
-**Reason:** “Best” has no single defensible business meaning. The product should ask, not invent an objective.
+**Reason:** Invented history would turn a product gap into a false analytical claim.
 
-## 9. Cross-board matching is exact after normalization
+## 9. Semantic definitions annotate; they do not recalculate
 
-**Decision:** Known company-code formats are normalized deterministically (for example, `WOCOMPANY_002` and `COMPANY_002` become `COMPANY002`). Cross-board presence is the intersection of unique exact keys. Unknown formats are trimmed and upper-cased but never fuzzily guessed.
+**Decision:** `src/lib/semantic` registers metric IDs, dimensions, joins, lineage, and evidence quality while `src/lib/analytics` remains the arithmetic owner.
 
-**Reason:** Exact normalized matching fixes known formatting variance while avoiding false joins and row-count inflation.
+**Reason:** Central semantics reduce drift without creating two competing implementations of the same metric.
 
-## 10. Current-quarter absence is not zero performance
+## 10. Evidence quality is descriptive, not model confidence
 
-**Decision:** A requested current/explicit quarter with no usable records returns a no-data state and latest-available-period context when one exists.
+**Decision:** Evidence quality uses explicit deterministic factors such as completeness, freshness, join coverage, temporal coverage, and source issues.
 
-**Reason:** “No records” and “zero business” are materially different conclusions.
+**Reason:** A model confidence score would not explain whether the underlying business evidence is actually complete or fresh.
 
-## 11. Analysis time is explicit
+## 11. The LLM is a bounded planner and interpreter
 
-**Decision:** Time-dependent calculations accept an `asOfDate` rather than reading the system clock inside analytics.
+**Decision:** Optional Gemini output can propose schema-valid typed tools and generate qualitative explanation after analytics exist. Tool proposals remain subject to allowlist and grounding checks.
 
-**Reason:** Delay, staleness, and current-quarter behavior remain deterministic and testable.
+**Reason:** Language flexibility is valuable; unrestricted arithmetic or tool authority is not.
 
-## 12. Evaluator access versus production identity controls
+## 12. Provider failure cannot own analytics availability
 
-**Decision:** The hiring preview is evaluator-accessible without introducing last-minute application SSO/RBAC. Secrets remain server-only, monday access remains read-only, and API controls remain active. A production rollout should add organization SSO/RBAC, deployment access policy, and distributed rate limiting.
+**Decision:** Supported deterministic planning/fallback behavior remains available when provider configuration/output fails.
 
-**Reason:** Adding identity infrastructure immediately before evaluation could block the reviewer and expands the release surface. The accessible preview is a deliberate evaluation trade-off, not a claim of full enterprise access-control readiness.
+**Reason:** An external model outage should degrade interpretation rather than corrupt or erase authoritative analytics.
+
+## 13. Multi-turn state is structured
+
+**Decision:** Copilot context retains bounded analytical state such as metric, dimension, entity, period, filters, prior typed tool, and snapshot reference instead of treating the full prior transcript as executable state.
+
+**Reason:** Structured state is easier to validate, ground, test, and explain.
+
+## 14. Ambiguous business goals should clarify
+
+**Decision:** Requests whose objective is not well-defined—such as “best customer” without a definition—should clarify or map only to explicitly supported semantics.
+
+**Reason:** The product should not silently choose a business objective that the user did not specify.
+
+## 15. Scenario Lab is deterministic what-if analysis
+
+**Decision:** Scenarios apply validated overrides to cloned snapshots, rerun the same analytical tool, and calculate delta in code. They are not described as predictions.
+
+**Reason:** Assumption analysis is valuable without pretending to know future probability.
+
+## 16. Predictive ML waits for temporal evidence
+
+**Decision:** Pipeline-conversion, collections-risk, and delivery-risk models remain research directions until sufficient point-in-time history exists for defensible labels and evaluation.
+
+**Reason:** A predictive claim without adequate historical training/evaluation evidence would violate the product's trust model.
+
+## 17. Live and temporal serving are separate deployment modes
+
+**Decision:** Current-state deployments can run in `live` mode, while deployments with PostgreSQL history can opt into `temporal_preferred` or `temporal_only`.
+
+**Reason:** Historical infrastructure should add capability without making the current-state product unusable in environments that have not operationalized a temporal store.
+
+## 18. Temporal sync is authenticated and scheduler-agnostic
+
+**Decision:** `/api/internal/sync/monday` requires a bearer `CRON_SECRET`; the repository does not hard-code a specific scheduling provider.
+
+**Reason:** Capture cadence is an operations concern, while authentication and snapshot semantics belong in the application contract.
+
+## 19. Process-local rate limiting is an explicit limitation
+
+**Decision:** Current request throttling remains process-local; distributed enforcement is tracked as runtime hardening rather than being implied as complete.
+
+**Reason:** Serverless scale can span multiple instances. The limitation should be visible rather than overstated.
+
+## 20. Portfolio claims follow deployed evidence
+
+**Decision:** Documentation distinguishes repository capabilities from what is currently available on a public deployment and only labels real captures as screenshots of the states they actually show.
+
+**Reason:** A trustworthy product story must apply the same evidence discipline to its own portfolio presentation.

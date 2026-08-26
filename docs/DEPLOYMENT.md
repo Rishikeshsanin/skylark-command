@@ -1,120 +1,178 @@
-# Deployment Readiness
+# Deployment
 
-This document describes deployment configuration for Skylark Command. It is **not** authorization to deploy production. Temporal database operations are covered in detail by `docs/TEMPORAL_PRODUCTION_READINESS.md`.
+Skylark Command targets a Node.js Next.js runtime and can operate in either current-state live mode or a PostgreSQL-backed temporal mode.
 
 ## Platform baseline
 
 - Next.js 16 App Router
+- React 19
 - TypeScript
-- Node.js runtime major: **24.x**
-- Package manager: npm
-- Vercel framework preset: Next.js / auto-detect
-- Repository root: `.`
-- Install: `npm ci`
-- Build: `npm run build`
-- Do not configure a static export
+- Node.js 20.9+
+- npm / `package-lock.json`
+- Vercel-compatible Node runtime
+- PostgreSQL required only for temporal-history modes
 
-The connected Vercel `skylark-command` project was verified during the V2 temporal-readiness audit as Node.js 24.x. `package.json` pins the same major so local/CI/runtime expectations do not silently float to a future Node major.
-
-## Required server environment variables
-
-### Live monday source
-
-| Variable | Required | Purpose | Secret? |
-| --- | --- | --- | --- |
-| `MONDAY_API_TOKEN` | Yes for live/sync | Authenticates monday.com GraphQL reads | Yes |
-| `MONDAY_DEALS_BOARD_ID` | Yes for live/sync | Deals board ID (`5030844099`) | Server config |
-| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes for live/sync | Work Orders board ID (`5030844103`) | Server config |
-
-The data client requires non-empty values and numeric board IDs. Never expose the token through `NEXT_PUBLIC_` variables or commit a real value.
-
-### V2 temporal data platform
-
-| Variable | Required | Purpose | Secret? |
-| --- | --- | --- | --- |
-| `DATABASE_URL` | Temporal modes/sync | Server-side PostgreSQL connection | Yes |
-| `CRON_SECRET` | Scheduled sync | Bearer secret for `/api/internal/sync/monday` | Yes |
-| `SKYLARK_DATA_MODE` | No | `live`, `temporal_preferred`, `temporal_only` | No |
-| `SKYLARK_WORKSPACE_KEY` | No | Logical temporal workspace isolation | No |
-| `SKYLARK_STALE_AFTER_MINUTES` | No | Temporal freshness threshold | No |
-| `SKYLARK_DB_MAX_CONNECTIONS` | No | Bounded Postgres.js connections per server instance | No |
-
-`DATABASE_URL` and `CRON_SECRET` are server-only. They must never use a `NEXT_PUBLIC_` prefix. Live/default mode remains independent of PostgreSQL.
-
-For the current Vercel Hobby plan, the compatible cron cadence is daily. The readiness branch deliberately does **not** add active production cron configuration. See the temporal runbook for the proposed schedule and activation gate.
-
-## Gemini executive explanation provider
-
-Skylark Command uses Google Gemini for optional qualitative executive explanation:
+Recommended build configuration:
 
 ```text
-gemini-2.5-flash-lite
+Repository root: .
+Install: npm ci
+Build: npm run build
+Framework: Next.js / auto-detect
 ```
 
-Key precedence is:
+Do not configure a static export; the application has dynamic server routes.
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `GEMINI_API_KEY` | No | Preferred Gemini server API key |
-| `AI_API_KEY` | No | Backward-compatible fallback when `GEMINI_API_KEY` is unset |
+## Environment variables
 
-If both are configured, `GEMINI_API_KEY` wins. Both are server-only secrets and must never use a `NEXT_PUBLIC_` prefix.
+### Live source — required
 
-Gemini is not the source of business arithmetic. Deterministic analytics remain authoritative. Provider failure must retain deterministic output/fallback behavior.
+| Variable | Required | Secret | Purpose |
+| --- | --- | --- | --- |
+| `MONDAY_API_TOKEN` | Yes | Yes | Server-side monday.com GraphQL reads |
+| `MONDAY_DEALS_BOARD_ID` | Yes | No | Deals board ID |
+| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes | No | Work Orders board ID |
 
-## Canonical API routes
+### Optional AI provider
+
+| Variable | Required | Secret | Purpose |
+| --- | --- | --- | --- |
+| `GEMINI_API_KEY` | No | Yes | Preferred Gemini planning/interpretation key |
+| `AI_API_KEY` | No | Yes | Backward-compatible fallback when `GEMINI_API_KEY` is unset |
+
+If both are set, `GEMINI_API_KEY` takes precedence. Deterministic analytics do not require either provider key.
+
+### Temporal data platform
+
+| Variable | Required | Secret | Purpose |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | For temporal modes | Yes | PostgreSQL connection string for analytical snapshots |
+| `SKYLARK_DATA_MODE` | No | No | `live`, `temporal_preferred`, or `temporal_only`; defaults to `live` |
+| `SKYLARK_WORKSPACE_KEY` | No | No | Workspace namespace for temporal snapshots; defaults to `skylark-command` |
+| `SKYLARK_STALE_AFTER_MINUTES` | No | No | Freshness threshold for temporal serving; defaults to 60 |
+| `CRON_SECRET` | For sync endpoint | Yes | Bearer secret protecting `/api/internal/sync/monday` |
+
+Never expose any secret through a `NEXT_PUBLIC_` variable.
+
+## Example configuration
+
+### Current-state live mode
+
+```dotenv
+MONDAY_API_TOKEN=<server-side-token>
+MONDAY_DEALS_BOARD_ID=<deals-board-id>
+MONDAY_WORK_ORDERS_BOARD_ID=<work-orders-board-id>
+SKYLARK_DATA_MODE=live
+
+# Optional
+GEMINI_API_KEY=<server-side-key>
+```
+
+### Temporal-preferred mode
+
+```dotenv
+MONDAY_API_TOKEN=<server-side-token>
+MONDAY_DEALS_BOARD_ID=<deals-board-id>
+MONDAY_WORK_ORDERS_BOARD_ID=<work-orders-board-id>
+
+DATABASE_URL=<postgres-connection-string>
+CRON_SECRET=<high-entropy-server-secret>
+SKYLARK_DATA_MODE=temporal_preferred
+SKYLARK_WORKSPACE_KEY=skylark-command
+SKYLARK_STALE_AFTER_MINUTES=60
+
+# Optional
+GEMINI_API_KEY=<server-side-key>
+```
+
+## Database migration
+
+Temporal mode requires the repository migration to be applied before snapshot reads/writes:
+
+```bash
+npm run db:migrate
+```
+
+The migration creates the temporal intelligence tables used for sync runs, analytical snapshots, and normalized Deal/Work Order records.
+
+Apply migrations using a trusted deployment/admin environment. Do not expose database credentials to the browser.
+
+## Data serving modes
+
+### `live`
+
+Reads current monday.com data for analytics. PostgreSQL is not required.
+
+### `temporal_preferred`
+
+Uses the temporal data platform according to the serving contract and can retain live data availability when durable history is not usable. This mode is appropriate when historical snapshots are being operationalized but current-state analytics must remain resilient.
+
+### `temporal_only`
+
+Requires the temporal store. Use only when the deployment intentionally treats persisted successful snapshots as the analytical serving source.
+
+## Temporal snapshot sync
+
+The repository exposes:
+
+```text
+GET /api/internal/sync/monday
+Authorization: Bearer <CRON_SECRET>
+```
+
+The endpoint:
+
+1. authenticates using a timing-safe bearer comparison;
+2. fetches the configured monday.com boards;
+3. normalizes source data;
+4. persists a successful point-in-time analytical snapshot;
+5. records sync metadata/watermarks;
+6. returns safe sync metadata.
+
+The repository does not assume a particular scheduler. A deployment can call this endpoint from Vercel Cron or another trusted scheduler, but scheduling configuration must be created and verified separately.
+
+Historical Change Intelligence is only as useful as the real snapshot cadence. Do not advertise “since last week” behavior in an environment that has not captured the relevant states.
+
+## API routes
 
 ### `GET /api/health`
 
-Returns service/configuration metadata. It checks configuration presence; it is not a destructive dependency probe.
+Returns configuration-safe service metadata. It must not expose tokens, database URLs, or provider keys.
 
 ### `POST /api/chat`
 
-This is the canonical Founder Copilot backend. The route applies strict validation, request IDs, rate limiting, safe public errors and deterministic analytics before optional model explanation.
+Canonical Founder Copilot backend. Requests are validated and bounded before typed analytical orchestration.
 
 ### `GET /api/internal/sync/monday`
 
-Server-only temporal synchronization endpoint.
+Authenticated temporal snapshot ingestion endpoint. It is not a public browser operation.
 
-- Requires `CRON_SECRET`.
-- Requires `Authorization: Bearer <CRON_SECRET>`.
-- Uses timing-safe comparison.
-- Reads monday.com only.
-- Persists through the temporal Postgres store.
-- Returns a safe generic failure envelope instead of database/upstream secrets.
-- Must not be exposed as an arbitrary SQL or GraphQL endpoint.
+## monday.com boundary
 
-## monday.com behavior
-
-The server-side monday client:
+The source client:
 
 - imports `server-only`;
-- sends GraphQL queries only and rejects mutation text;
-- uses `cache: "no-store"`;
+- uses query-only GraphQL patterns;
+- rejects mutation text;
 - paginates board items;
-- uses bounded request timeout/retry behavior;
-- fetches Deals and Work Orders server-side;
-- does not embed assignment/business datasets in application code.
+- uses no-store source fetching;
+- does not embed an exported dataset as runtime truth.
 
-## Temporal migration gate
+## Gemini boundary
 
-Never infer the target database from a connection string alone. Before migration, explicitly identify the environment as isolated staging or approved Skylark production.
+Gemini is optional and does not own business arithmetic.
 
-From the exact candidate SHA:
+Provider failure or invalid output must preserve authoritative deterministic analytical data. The provider can improve planning/interpretation but cannot create a new trusted metric merely through generated text.
 
-```bash
-npm ci
-npm run db:migrate
-npm run db:migrate
-```
+## Function-duration and upstream risk
 
-The second migration invocation must be a no-op. Then verify schema versions, checksums, indexes and the latest successful snapshot behavior described in `docs/TEMPORAL_PRODUCTION_READINESS.md`.
+monday.com pagination, retries, and provider latency can increase function duration. Temporal sync adds database/network work as well.
 
-Do not run migrations against another project's database and do not create a destructive automatic rollback path.
+Measure realistic runtime duration in a preview with the intended board sizes and hosting plan. Do not mask upstream timeout problems by weakening validation or silently returning stale/fabricated results.
 
-## Required release gate
+## Release verification
 
-From the exact candidate SHA:
+Before promoting a deployment, follow [RELEASE.md](RELEASE.md):
 
 ```bash
 npm ci
@@ -123,60 +181,8 @@ npm run lint
 npm run build
 ```
 
-All must succeed. Do not skip evaluator/security/temporal regression suites.
+Then run route/API smoke against the deployed URL and verify live or temporal source behavior for the selected mode.
 
-The final candidate should also pass:
+## Rollback
 
-- tracked-repository secret scan;
-- desktop/mobile smoke;
-- route checks for `/`, `/copilot`, `/pipeline`, `/operations`, `/leadership`, `/data-health`, `/api/health`;
-- `/api/chat` validation;
-- red-team retest;
-- controlled temporal sync validation when an explicitly isolated staging database exists.
-
-## Secret audit
-
-Search the tracked release tree for real values associated with:
-
-- `MONDAY_API_TOKEN`
-- `DATABASE_URL`
-- `CRON_SECRET`
-- `GEMINI_API_KEY`
-- `AI_API_KEY`
-- Bearer credentials
-- passwords / hardcoded secrets
-- `NEXT_PUBLIC_` references to server secrets
-
-Environment names and empty/example placeholders are acceptable. Real credentials are not.
-
-## Preview/release procedure
-
-1. Record the exact approved SHA.
-2. Confirm `package-lock.json` is present and matches dependency declarations.
-3. Run install/test/lint/build on that SHA using Node 24.x.
-4. Configure the three monday variables in Preview when live data is required.
-5. Configure Gemini only when optional explanations are desired.
-6. For temporal staging validation, configure only a separately authorized staging `DATABASE_URL` and staging `CRON_SECRET`.
-7. Never point Preview/staging at an unknown production database.
-8. Create a Preview deployment only when explicitly authorized.
-9. Run the application smoke suite and inspect runtime logs.
-10. Complete release/submission checks before any production promotion.
-
-Vercel Cron Jobs themselves execute on production deployments, not Preview. Therefore preview validation of the sync route is manual/authenticated; cron activation happens only after explicit production release authorization.
-
-## Function-duration risk
-
-monday.com pagination and retry behavior can increase server execution time under upstream latency or rate limiting. The monday client currently bounds each request at 12 seconds with at most two retries and bounded backoff, but total sync duration also depends on pagination. Measure the controlled staging sync against the actual Vercel function-duration allowance before enabling production scheduling.
-
-## Rollback and recovery readiness
-
-Before production promotion, record:
-
-- approved Git SHA;
-- validated Preview URL;
-- database migration versions/checksums;
-- provider backup/restore status for the actual database plan;
-- production deployment ID/URL once created;
-- previous known-good application deployment.
-
-Application rollback must not delete temporal history. Database recovery uses the managed provider's verified restore mechanism; migrations are forward-only and the repository intentionally does not automate destructive down migrations.
+Record the deployed git SHA and immutable deployment identifier. If post-promotion smoke fails, restore the last known-good deployment or stop promotion. Database migrations and snapshot data should be treated as durable infrastructure; avoid destructive rollback actions unless they are explicitly designed and tested.
