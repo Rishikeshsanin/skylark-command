@@ -17,7 +17,9 @@ const smokeRoutes = ["/pipeline", "/operations", "/leadership"];
 const viewports = [
   { name: "desktop-1440", width: 1440, height: 900, reducedMotion: "no-preference" },
   { name: "laptop-1366", width: 1366, height: 768, reducedMotion: "no-preference" },
+  { name: "tablet-1024", width: 1024, height: 768, reducedMotion: "no-preference" },
   { name: "tablet-768", width: 768, height: 1024, reducedMotion: "reduce" },
+  { name: "mobile-430", width: 430, height: 932, reducedMotion: "reduce" },
   { name: "mobile-390", width: 390, height: 844, reducedMotion: "reduce" },
   { name: "mobile-375", width: 375, height: 667, reducedMotion: "reduce" },
 ];
