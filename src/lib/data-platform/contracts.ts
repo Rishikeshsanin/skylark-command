@@ -3,6 +3,7 @@ import type { BusinessDataSnapshot } from "@/lib/business-data";
 export type SyncRunStatus = "syncing" | "succeeded" | "failed";
 export type FreshnessState = "fresh" | "stale" | "syncing" | "failed";
 export type DataServingMode = "live" | "temporal_preferred" | "temporal_only";
+export type HistoricalSnapshotOrder = "asc" | "desc";
 
 export interface SyncRunRecord {
   id: string;
@@ -49,6 +50,14 @@ export interface StoredBusinessDataSnapshot extends BusinessDataSnapshot {
   };
 }
 
+export interface ListSuccessfulSnapshotsInput {
+  workspaceKey: string;
+  fromSnapshotTime?: string;
+  toSnapshotTime?: string;
+  limit?: number;
+  order?: HistoricalSnapshotOrder;
+}
+
 export interface TemporalSnapshotStore {
   beginSync(input: {
     syncId: string;
@@ -75,6 +84,9 @@ export interface TemporalSnapshotStore {
   }): Promise<SyncRunRecord>;
 
   loadLatestSuccessfulSnapshot(workspaceKey: string): Promise<StoredBusinessDataSnapshot | null>;
+
+  /** Enumerates only persisted analytical snapshots referenced by at least one successful sync run. */
+  listSuccessfulSnapshots(input: ListSuccessfulSnapshotsInput): Promise<StoredBusinessDataSnapshot[]>;
 
   getFreshness(input: {
     workspaceKey: string;
