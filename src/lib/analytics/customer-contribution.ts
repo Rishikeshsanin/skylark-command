@@ -184,7 +184,7 @@ export function calculateCustomerContribution(
       if (allowedIds && !allowedIds.has(deal.mondayItemId)) {
         reasons.push("excluded by grounded Deal ID scope");
       }
-      if (scope.minDealValue !== undefined || scope.maxDealValue !== undefined) {
+      if (reasons.length === 0 && (scope.minDealValue !== undefined || scope.maxDealValue !== undefined)) {
         if (deal.value === null) {
           valueThresholdUnknownDealCount += 1;
           reasons.push("unknown Deal value cannot satisfy explicit value threshold");
