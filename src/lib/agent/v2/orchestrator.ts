@@ -30,6 +30,7 @@ import {
 } from "./planner";
 import {
   customerContributionScopeFromContext,
+  validateCustomerContributionProposalGrounding,
 } from "./customer-contribution-tool";
 import {
   executeRegisteredTool,
@@ -238,6 +239,28 @@ export async function orchestrateFounderQuestionV2(
   }
 
   const call = planned.proposal.call;
+  if (call.tool === "getCustomerContribution" && planned.planner === "gemini") {
+    const groundingIssue = validateCustomerContributionProposalGrounding(
+      call,
+      message,
+      context,
+      snapshot,
+      parseMoneyMention(message),
+    );
+    if (groundingIssue) {
+      return clarificationWithTrace(
+        {
+          kind: "clarification",
+          question: "Could you clarify the exact customer-contribution scope?",
+          reason: `The proposed customer-contribution analysis failed grounding validation. ${groundingIssue}`,
+        },
+        planned.planner,
+        context,
+        planned.caveats,
+      );
+    }
+  }
+
   let execution;
   try {
     execution = await executeRegisteredTool(call, snapshot);
