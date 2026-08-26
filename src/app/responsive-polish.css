@@ -18,6 +18,14 @@
     padding-block: 10px;
   }
 
+  /* Copilot example prompts are primary mobile actions. Keep them large enough
+     to tap without changing their content or desktop visual density. */
+  .copilot-example-chip {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
   /* Native details remain keyboard-native while gaining a deliberate touch target. */
   .change-evidence > summary,
   .copilot-supplied-details > summary,
