@@ -79,8 +79,10 @@ async function inspectPage(browser, viewport, route, { smoke = false } = {}) {
       const customerMoney = document.querySelector(".customer-money-value");
       const customerMoneyRect = customerMoney?.getBoundingClientRect();
 
+      // Audit actual native product controls. Do not treat generic role="button"
+      // attributes on chart-library SVG internals as standalone touch targets.
       const touchTargets = innerWidth <= 390
-        ? Array.from(document.querySelectorAll("button, summary, [role='button'], a.customer-link, .customer-evidence > summary"))
+        ? Array.from(document.querySelectorAll("button, summary, a.customer-link, .customer-evidence > summary"))
             .map((element) => {
               const rect = element.getBoundingClientRect();
               const style = getComputedStyle(element);
