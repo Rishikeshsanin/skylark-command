@@ -81,7 +81,7 @@ export function FounderCopilotV2() {
     if (thread) {
       thread.scrollTo({
         top: thread.scrollHeight,
-        behavior: prefersReducedMotion() ? "auto" : "smooth",
+        behavior: force || prefersReducedMotion() ? "auto" : "smooth",
       });
     }
     nearBottomRef.current = true;
