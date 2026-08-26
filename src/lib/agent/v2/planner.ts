@@ -1,4 +1,5 @@
 import type { BusinessDataSnapshot } from "@/lib/business-data";
+import { observeOperation } from "@/lib/server/telemetry";
 import {
   plannerProposalSchema,
   type AnalysisFilter,
@@ -294,7 +295,7 @@ export function validateGroundedProposal(message: string, context: ConversationC
   ) : proposal;
 }
 
-export async function planWithGuardrails(
+async function planWithGuardrailsInternal(
   message: string,
   snapshot: BusinessDataSnapshot,
   context?: ConversationContext,
@@ -321,4 +322,17 @@ export async function planWithGuardrails(
     planner: "deterministic_fallback",
     caveats: provider ? ["The optional LLM planner was unavailable, invalid, or failed grounding checks; deterministic planning fallback was used."] : ["No LLM planner was configured; deterministic planning fallback was used."],
   };
+}
+
+export function planWithGuardrails(
+  message: string,
+  snapshot: BusinessDataSnapshot,
+  context?: ConversationContext,
+  provider?: AnalyticalPlanningProvider | null,
+): Promise<PlannedAnalysis> {
+  return observeOperation(
+    "copilot.planning",
+    { operation: "copilot_planning", provider: provider?.name },
+    () => planWithGuardrailsInternal(message, snapshot, context, provider),
+  );
 }

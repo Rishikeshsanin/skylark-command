@@ -11,6 +11,7 @@ import { buildAnswerLineage } from "@/lib/semantic/lineage";
 import { buildTrustResponse } from "@/lib/semantic/trust";
 import { CLIENT_EXACT_JOIN_ID } from "@/lib/semantic/joins";
 import type { LineageFilter, TrustResponse } from "@/lib/semantic/types";
+import { observeOperation } from "@/lib/server/telemetry";
 import type { AgentResponse, AnalyticsResult } from "@/types";
 import type { QueryPlan } from "@/lib/agent/schemas";
 import {
@@ -459,7 +460,7 @@ async function executeBaseTool(call: BaseToolCall, baseline: BusinessDataSnapsho
   };
 }
 
-export async function executeRegisteredTool(call: ToolCall, baseline: BusinessDataSnapshot): Promise<RegisteredToolExecution> {
+async function executeRegisteredToolInternal(call: ToolCall, baseline: BusinessDataSnapshot): Promise<RegisteredToolExecution> {
   if (call.tool !== "runScenario") return executeBaseTool(call, baseline);
   if (call.args.analysis.tool === "getChangeIntelligence") {
     throw new Error("Historical Change Intelligence is observed source history and cannot be mutated through Scenario Lab.");
@@ -501,6 +502,14 @@ export async function executeRegisteredTool(call: ToolCall, baseline: BusinessDa
     semanticTrust: baselineExecution.semanticTrust,
     scenarioSemanticTrust: scenarioExecution.semanticTrust,
   };
+}
+
+export function executeRegisteredTool(call: ToolCall, baseline: BusinessDataSnapshot): Promise<RegisteredToolExecution> {
+  return observeOperation(
+    "copilot.tool.execute",
+    { operation: "tool_execution", toolName: call.tool },
+    () => executeRegisteredToolInternal(call, baseline),
+  );
 }
 
 export function legacyPlanForTool(call: ToolCall): QueryPlan {
