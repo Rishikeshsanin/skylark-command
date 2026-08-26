@@ -69,11 +69,22 @@ export interface JoinDefinition {
   semanticVersion: SemanticVersion;
 }
 
-export interface LineageFilter {
-  dimension: DimensionId;
-  operator: "eq" | "in";
-  values: string[];
-}
+export type LineageFilter =
+  | {
+      dimension: DimensionId;
+      operator: "eq" | "in";
+      values: string[];
+    }
+  | {
+      field: "deal_value";
+      operator: "gte" | "lte";
+      value: number;
+    }
+  | {
+      field: "deal_ids";
+      operator: "in";
+      values: string[];
+    };
 
 export interface LineageTimeRange {
   dimension: "quarter";
