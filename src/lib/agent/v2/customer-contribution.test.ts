@@ -132,10 +132,9 @@ const scopedContext: ConversationContext = {
 
 describe("customer contribution typed tool", () => {
   it("inherits a structured multi-turn pipeline scope without numeric reinterpretation", () => {
-    const call = customerContributionScopeFromContext(
-      scopedContext.previousResult?.toolCall ?? null,
-      scopedContext,
-    );
+    const previous = scopedContext.previousResult?.toolCall;
+    const basePrevious = previous && previous.tool !== "runScenario" ? previous : null;
+    const call = customerContributionScopeFromContext(basePrevious, scopedContext);
     expect(call).toEqual({
       tool: "getCustomerContribution",
       args: {
