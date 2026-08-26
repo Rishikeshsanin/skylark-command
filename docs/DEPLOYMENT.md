@@ -1,13 +1,12 @@
 # Deployment Readiness
 
-This document describes release configuration for Skylark Command application RC3 (`039cadfda8678ff82e105bf5fea2da72937c18c6`). It is **not** authorization to deploy: final independent Agent 5 approval is still required, and this documentation branch does not merge `main` or deploy.
+This document describes deployment configuration for Skylark Command. It is **not** authorization to deploy production. Temporal database operations are covered in detail by `docs/TEMPORAL_PRODUCTION_READINESS.md`.
 
 ## Platform baseline
 
 - Next.js 16 App Router
 - TypeScript
-- `/api/chat` runtime: Node.js
-- Minimum Node.js: 20.9+
+- Node.js runtime major: **24.x**
 - Package manager: npm
 - Vercel framework preset: Next.js / auto-detect
 - Repository root: `.`
@@ -15,21 +14,38 @@ This document describes release configuration for Skylark Command application RC
 - Build: `npm run build`
 - Do not configure a static export
 
+The connected Vercel `skylark-command` project was verified during the V2 temporal-readiness audit as Node.js 24.x. `package.json` pins the same major so local/CI/runtime expectations do not silently float to a future Node major.
+
 ## Required server environment variables
 
-Configure these for any final Preview/Production environment:
+### Live monday source
 
 | Variable | Required | Purpose | Secret? |
 | --- | --- | --- | --- |
-| `MONDAY_API_TOKEN` | Yes | Authenticates monday.com GraphQL reads | Yes |
-| `MONDAY_DEALS_BOARD_ID` | Yes | Deals board ID (`5030844099`) | Non-secret server configuration |
-| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes | Work Orders board ID (`5030844103`) | Non-secret server configuration |
+| `MONDAY_API_TOKEN` | Yes for live/sync | Authenticates monday.com GraphQL reads | Yes |
+| `MONDAY_DEALS_BOARD_ID` | Yes for live/sync | Deals board ID (`5030844099`) | Server config |
+| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes for live/sync | Work Orders board ID (`5030844103`) | Server config |
 
 The data client requires non-empty values and numeric board IDs. Never expose the token through `NEXT_PUBLIC_` variables or commit a real value.
 
+### V2 temporal data platform
+
+| Variable | Required | Purpose | Secret? |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | Temporal modes/sync | Server-side PostgreSQL connection | Yes |
+| `CRON_SECRET` | Scheduled sync | Bearer secret for `/api/internal/sync/monday` | Yes |
+| `SKYLARK_DATA_MODE` | No | `live`, `temporal_preferred`, `temporal_only` | No |
+| `SKYLARK_WORKSPACE_KEY` | No | Logical temporal workspace isolation | No |
+| `SKYLARK_STALE_AFTER_MINUTES` | No | Temporal freshness threshold | No |
+| `SKYLARK_DB_MAX_CONNECTIONS` | No | Bounded Postgres.js connections per server instance | No |
+
+`DATABASE_URL` and `CRON_SECRET` are server-only. They must never use a `NEXT_PUBLIC_` prefix. Live/default mode remains independent of PostgreSQL.
+
+For the current Vercel Hobby plan, the compatible cron cadence is daily. The readiness branch deliberately does **not** add active production cron configuration. See the temporal runbook for the proposed schedule and activation gate.
+
 ## Gemini executive explanation provider
 
-RC3 uses Google Gemini for optional qualitative executive explanation:
+Skylark Command uses Google Gemini for optional qualitative executive explanation:
 
 ```text
 gemini-2.5-flash-lite
@@ -44,33 +60,29 @@ Key precedence is:
 
 If both are configured, `GEMINI_API_KEY` wins. Both are server-only secrets and must never use a `NEXT_PUBLIC_` prefix.
 
-Gemini is not the source of business arithmetic. The planner/dispatcher runs deterministic analytics first. If Gemini is unavailable, times out, is rate-limited, or returns invalid output, the request retains authoritative deterministic `response.data` and uses the deterministic explanation fallback.
+Gemini is not the source of business arithmetic. Deterministic analytics remain authoritative. Provider failure must retain deterministic output/fallback behavior.
 
 ## Canonical API routes
 
 ### `GET /api/health`
 
-Returns service/configuration metadata. It checks configuration presence; it does not perform a live monday.com dependency probe.
+Returns service/configuration metadata. It checks configuration presence; it is not a destructive dependency probe.
 
 ### `POST /api/chat`
 
-This is the **only** Founder Copilot backend. Do not add `/api/copilot`.
+This is the canonical Founder Copilot backend. The route applies strict validation, request IDs, rate limiting, safe public errors and deterministic analytics before optional model explanation.
 
-Request shape:
+### `GET /api/internal/sync/monday`
 
-```json
-{"message":"How is our pipeline looking?"}
-```
+Server-only temporal synchronization endpoint.
 
-The route applies:
-
-- strict JSON/schema validation;
-- message/request size limits;
-- request IDs;
-- rate limiting;
-- safe public errors;
-- canonical planner/dispatcher;
-- deterministic analytics before optional Gemini explanation.
+- Requires `CRON_SECRET`.
+- Requires `Authorization: Bearer <CRON_SECRET>`.
+- Uses timing-safe comparison.
+- Reads monday.com only.
+- Persists through the temporal Postgres store.
+- Returns a safe generic failure envelope instead of database/upstream secrets.
+- Must not be exposed as an arbitrary SQL or GraphQL endpoint.
 
 ## monday.com behavior
 
@@ -84,6 +96,22 @@ The server-side monday client:
 - fetches Deals and Work Orders server-side;
 - does not embed assignment/business datasets in application code.
 
+## Temporal migration gate
+
+Never infer the target database from a connection string alone. Before migration, explicitly identify the environment as isolated staging or approved Skylark production.
+
+From the exact candidate SHA:
+
+```bash
+npm ci
+npm run db:migrate
+npm run db:migrate
+```
+
+The second migration invocation must be a no-op. Then verify schema versions, checksums, indexes and the latest successful snapshot behavior described in `docs/TEMPORAL_PRODUCTION_READINESS.md`.
+
+Do not run migrations against another project's database and do not create a destructive automatic rollback path.
+
 ## Required release gate
 
 From the exact candidate SHA:
@@ -95,22 +123,24 @@ npm run lint
 npm run build
 ```
 
-All must succeed. `npm test` must include the Agent 5 evaluator and release-security regression suites; do not skip them.
+All must succeed. Do not skip evaluator/security/temporal regression suites.
 
-The final candidate must also pass:
+The final candidate should also pass:
 
 - tracked-repository secret scan;
-- desktop smoke at 1440×900;
-- mobile smoke at 390×844;
+- desktop/mobile smoke;
 - route checks for `/`, `/copilot`, `/pipeline`, `/operations`, `/leadership`, `/data-health`, `/api/health`;
 - `/api/chat` validation;
-- red-team retest.
+- red-team retest;
+- controlled temporal sync validation when an explicitly isolated staging database exists.
 
 ## Secret audit
 
 Search the tracked release tree for real values associated with:
 
 - `MONDAY_API_TOKEN`
+- `DATABASE_URL`
+- `CRON_SECRET`
 - `GEMINI_API_KEY`
 - `AI_API_KEY`
 - Bearer credentials
@@ -119,44 +149,34 @@ Search the tracked release tree for real values associated with:
 
 Environment names and empty/example placeholders are acceptable. Real credentials are not.
 
-## Preview procedure for MASTER CHAT
-
-Only after independent approval of the exact application RC3 SHA:
+## Preview/release procedure
 
 1. Record the exact approved SHA.
-2. Confirm `package-lock.json` is present and matches `package.json`.
-3. Run install/test/lint/build on that SHA.
-4. Configure the three required monday variables in Preview.
-5. Configure `GEMINI_API_KEY` only if Gemini explanation is desired; `AI_API_KEY` remains fallback-compatible.
-6. Create a Preview deployment.
-7. Run:
+2. Confirm `package-lock.json` is present and matches dependency declarations.
+3. Run install/test/lint/build on that SHA using Node 24.x.
+4. Configure the three monday variables in Preview when live data is required.
+5. Configure Gemini only when optional explanations are desired.
+6. For temporal staging validation, configure only a separately authorized staging `DATABASE_URL` and staging `CRON_SECRET`.
+7. Never point Preview/staging at an unknown production database.
+8. Create a Preview deployment only when explicitly authorized.
+9. Run the application smoke suite and inspect runtime logs.
+10. Complete release/submission checks before any production promotion.
 
-```bash
-BASE_URL="https://<preview-host>" npm run smoke
-```
-
-8. Optionally validate safe chat behavior with:
-
-```bash
-BASE_URL="https://<preview-host>" SMOKE_CHAT=1 npm run smoke
-```
-
-9. Verify desktop/mobile views, structured Copilot output, Leadership Brief, Founder Attention, Data Health, and source provenance.
-10. Inspect runtime logs for timeouts, safe fallback behavior, and accidental secret exposure.
-11. Complete `docs/SUBMISSION_CHECKLIST.md`.
-12. Only then decide whether to promote/deploy production.
+Vercel Cron Jobs themselves execute on production deployments, not Preview. Therefore preview validation of the sync route is manual/authenticated; cron activation happens only after explicit production release authorization.
 
 ## Function-duration risk
 
-monday.com pagination and retry behavior can increase server execution time under upstream latency or rate limiting. Before production approval, measure realistic Preview function durations with live monday configuration and confirm the selected hosting plan comfortably covers observed behavior. Do not hide upstream timeout problems in release tooling.
+monday.com pagination and retry behavior can increase server execution time under upstream latency or rate limiting. The monday client currently bounds each request at 12 seconds with at most two retries and bounded backoff, but total sync duration also depends on pagination. Measure the controlled staging sync against the actual Vercel function-duration allowance before enabling production scheduling.
 
-## Rollback readiness
+## Rollback and recovery readiness
 
 Before production promotion, record:
 
-- approved git SHA;
+- approved Git SHA;
 - validated Preview URL;
+- database migration versions/checksums;
+- provider backup/restore status for the actual database plan;
 - production deployment ID/URL once created;
-- previous known-good production deployment if one exists.
+- previous known-good application deployment.
 
-If production smoke fails, roll back or halt release. Fix application behavior in the owning engineering branch rather than bypassing analytics/security gates.
+Application rollback must not delete temporal history. Database recovery uses the managed provider's verified restore mechanism; migrations are forward-only and the repository intentionally does not automate destructive down migrations.
