@@ -21,9 +21,10 @@ import { runWithTelemetryContext } from "@/lib/server/telemetry-context";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function withNoExecutionTrace(response: ReturnType<typeof buildErrorAgentResponse>) {
+function withNoExecutionTrace(response: ReturnType<typeof buildErrorAgentResponse>, requestId: string) {
   return {
     ...response,
+    requestId,
     analysis: {
       planner: "deterministic_fallback" as const,
       toolsUsed: [],
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
         const response = withNoExecutionTrace(buildErrorAgentResponse(
           "RATE_LIMITED",
           "Too many chat requests. Please retry shortly.",
-        ));
+        ), requestId);
         logEvent("warn", "chat.rate_limited", {
           operation: "chat_request",
           status: 429,
@@ -120,7 +121,6 @@ export async function POST(request: Request) {
         planner: response.analysis.planner,
         toolsUsed: response.analysis.toolsUsed,
         selectedTool: response.analysis.toolsUsed[0] ?? null,
-        freshnessState: response.analysis.sourceSnapshot ? response.source?.fetchedAt ? "available" : "unknown" : "not_applicable",
       });
 
       return NextResponse.json(response, {
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       const safe = toSafePublicError(error);
-      const response = withNoExecutionTrace(buildErrorAgentResponse(safe.code, safe.message));
+      const response = withNoExecutionTrace(buildErrorAgentResponse(safe.code, safe.message), requestId);
       const rejected = safe.status < 500;
       logEvent(rejected ? "warn" : "error", rejected ? "chat.request_rejected" : "chat.failed", {
         operation: "chat_request",
