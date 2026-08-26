@@ -3,7 +3,13 @@ import "server-only";
 import { observeOperation } from "./telemetry";
 
 const DEFAULT_WORKSPACE_KEY = "skylark-command";
-const DEFAULT_STALE_AFTER_MS = 60 * 60 * 1000;
+const DEFAULT_STALE_AFTER_MINUTES = 60;
+
+function staleAfterMs(): number {
+  const configured = Number(process.env.SKYLARK_STALE_AFTER_MINUTES);
+  const minutes = Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_STALE_AFTER_MINUTES;
+  return minutes * 60 * 1000;
+}
 
 export interface InternalDiagnostics {
   application: "ok";
@@ -13,6 +19,8 @@ export interface InternalDiagnostics {
   temporalMode: "live" | "temporal_preferred" | "temporal_only";
   freshness: {
     state: "fresh" | "stale" | "syncing" | "failed" | "live" | "unknown";
+    ageMs: number | null;
+    staleAfterMs: number;
     lastSyncStartedAt: string | null;
     lastSyncSucceededAt: string | null;
     servedSnapshotAt: string | null;
@@ -28,6 +36,7 @@ export async function getInternalDiagnostics(): Promise<InternalDiagnostics> {
       : "live" as const;
   const mondayConfigured = Boolean(process.env.MONDAY_API_TOKEN && process.env.MONDAY_DEALS_BOARD_ID && process.env.MONDAY_WORK_ORDERS_BOARD_ID);
   const databaseConfigured = Boolean(process.env.DATABASE_URL);
+  const thresholdMs = staleAfterMs();
   const base: InternalDiagnostics = {
     application: "ok",
     monday: mondayConfigured ? "configured" : "not_configured",
@@ -36,6 +45,8 @@ export async function getInternalDiagnostics(): Promise<InternalDiagnostics> {
     temporalMode,
     freshness: {
       state: temporalMode === "live" ? "live" : "unknown",
+      ageMs: null,
+      staleAfterMs: thresholdMs,
       lastSyncStartedAt: null,
       lastSyncSucceededAt: null,
       servedSnapshotAt: null,
@@ -52,14 +63,20 @@ export async function getInternalDiagnostics(): Promise<InternalDiagnostics> {
     base.database = "ok";
     if (temporalMode !== "live") {
       const workspaceKey = process.env.SKYLARK_WORKSPACE_KEY?.trim() ?? DEFAULT_WORKSPACE_KEY;
+      const now = new Date();
       const freshness = await observeOperation("database.health_freshness", { operation: "read_freshness", workspaceKey }, () =>
         createPostgresTemporalSnapshotStore().getFreshness({
           workspaceKey,
-          now: new Date().toISOString(),
-          staleAfterMs: DEFAULT_STALE_AFTER_MS,
+          now: now.toISOString(),
+          staleAfterMs: thresholdMs,
         }),
       );
-      base.freshness = freshness;
+      const reference = freshness.servedSnapshotAt ?? freshness.lastSyncSucceededAt;
+      base.freshness = {
+        ...freshness,
+        ageMs: reference ? Math.max(0, now.getTime() - Date.parse(reference)) : null,
+        staleAfterMs: thresholdMs,
+      };
     }
   } catch {
     base.database = "error";
