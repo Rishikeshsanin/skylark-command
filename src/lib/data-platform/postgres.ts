@@ -17,6 +17,7 @@ import { normalizeSuccessfulSnapshotQuery } from "./history-query";
 const DEFAULT_MAX_CONNECTIONS = 1;
 const MAX_SERVERLESS_CONNECTIONS = 5;
 export const SYNC_ACTIVE_LEASE_MS = 15 * 60 * 1000;
+export const SKYLARK_DATABASE_SEARCH_PATH = "skylark_command,pg_catalog";
 
 type TimestampValue = string | Date | null;
 
@@ -415,11 +416,17 @@ export function getTemporalSql(): Sql {
   }
 
   if (!globalSql.__skylarkTemporalSql) {
+    // Project Hub is shared by independent applications. Pin every connection
+    // to Skylark's assigned schema before any unqualified runtime SQL can run.
     globalSql.__skylarkTemporalSql = postgres(connectionString, {
       max: resolveTemporalMaxConnections(),
       idle_timeout: 20,
       connect_timeout: 10,
       prepare: false,
+      connection: {
+        application_name: "skylark-command",
+        search_path: SKYLARK_DATABASE_SEARCH_PATH,
+      },
     });
   }
   return globalSql.__skylarkTemporalSql;
