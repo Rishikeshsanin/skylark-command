@@ -41,6 +41,11 @@ export type V2AgentResponse<T = unknown> = AgentResponse<T> & {
   analysis: AnalysisTrustTrace;
 };
 
+type PipelineScopeCall = Extract<
+  BaseToolCall,
+  { tool: "getPipelineSummary" | "getPipelineBySector" | "getPipelineByStage" }
+>;
+
 function emptyContext(context?: ConversationContext): ConversationContext {
   return context ?? { version: 1, filters: [] };
 }
@@ -51,6 +56,12 @@ function baseCallFromContext(context?: ConversationContext): BaseToolCall | null
   return call.tool === "runScenario" ? call.args.analysis : call;
 }
 
+function isPipelineScopeCall(call: BaseToolCall): call is PipelineScopeCall {
+  return call.tool === "getPipelineSummary" ||
+    call.tool === "getPipelineBySector" ||
+    call.tool === "getPipelineByStage";
+}
+
 function isCustomerContributionFollowUp(message: string): boolean {
   return /\b(customers?|clients?)\b/i.test(message) &&
     /\b(behind|contribut(?:e|es|ion|ions)|driv(?:e|es|ing)|make up|account for)\b/i.test(message);
@@ -58,9 +69,7 @@ function isCustomerContributionFollowUp(message: string): boolean {
 
 function thresholdContinuation(message: string, context?: ConversationContext): ToolCall | null {
   const previous = baseCallFromContext(context);
-  if (!previous || !["getPipelineSummary", "getPipelineBySector", "getPipelineByStage"].includes(previous.tool)) {
-    return null;
-  }
+  if (!previous || !isPipelineScopeCall(previous)) return null;
   const amount = parseMoneyMention(message);
   if (amount === null || !/\b(above|over|greater than|at least|>=)\b/i.test(message)) return null;
 
