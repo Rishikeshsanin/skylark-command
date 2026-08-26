@@ -13,5 +13,5 @@ export default async function DataHealthPage() {
   }
   const data = result.data;
   const recordsAnalyzed = data.snapshot.deals.length + data.snapshot.workOrders.length;
-  return <div className="page"><PageHeader eyebrow="Trust & Transparency" title="Data Health" description={description} actions={<SourceStatus fetchedAt={data.snapshot.source.fetchedAt} boardNames={[data.snapshot.source.dealsBoardName, data.snapshot.source.workOrdersBoardName]} recordsAnalyzed={recordsAnalyzed} />} /><DataHealthDashboard report={data.report} /></div>;
+  return <div className="page"><PageHeader eyebrow="Trust & Transparency" title="Data Health" description={description} actions={<SourceStatus fetchedAt={data.snapshot.source.fetchedAt} boardNames={[data.snapshot.source.dealsBoardName, data.snapshot.source.workOrdersBoardName]} recordsAnalyzed={recordsAnalyzed} dataMode={data.snapshot.source.dataMode === "temporal" ? "temporal" : "live"} freshnessState={data.snapshot.source.freshnessState} lastSyncSucceededAt={data.snapshot.source.lastSyncSucceededAt} />} /><DataHealthDashboard report={data.report} /></div>;
 }

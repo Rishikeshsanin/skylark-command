@@ -13,5 +13,5 @@ export default async function OperationsPage() {
     return <div className="page"><PageHeader eyebrow="Work Order Intelligence" title="Operations" description={description} /><OperationsDashboard error={result.error} /></div>;
   }
   const data = result.data;
-  return <div className="page"><PageHeader eyebrow="Work Order Intelligence" title="Operations" description={description} actions={<SourceStatus fetchedAt={data.snapshot.source.fetchedAt} boardNames={[data.snapshot.source.workOrdersBoardName]} recordsAnalyzed={data.snapshot.workOrders.length} />} /><OperationsDashboard health={data.health} sectors={data.sectors} currency={DEFAULT_CURRENCY_CODE} /></div>;
+  return <div className="page"><PageHeader eyebrow="Work Order Intelligence" title="Operations" description={description} actions={<SourceStatus fetchedAt={data.snapshot.source.fetchedAt} boardNames={[data.snapshot.source.workOrdersBoardName]} recordsAnalyzed={data.snapshot.workOrders.length} dataMode={data.snapshot.source.dataMode === "temporal" ? "temporal" : "live"} freshnessState={data.snapshot.source.freshnessState} lastSyncSucceededAt={data.snapshot.source.lastSyncSucceededAt} />} /><OperationsDashboard health={data.health} sectors={data.sectors} currency={DEFAULT_CURRENCY_CODE} /></div>;
 }
