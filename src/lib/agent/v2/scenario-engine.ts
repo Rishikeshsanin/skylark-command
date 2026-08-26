@@ -1,4 +1,5 @@
 import type { BusinessDataSnapshot } from "@/lib/business-data";
+import { assertCurrentScenarioWorkflowAuthorized } from "@/lib/data-platform/workspace-scope";
 import type { Deal, WorkOrder } from "@/types";
 import type { ScenarioOverride } from "./contracts";
 
@@ -49,6 +50,7 @@ export function applyScenarioOverrides(
   baseline: BusinessDataSnapshot,
   overrides: ScenarioOverride[],
 ): AppliedScenario {
+  assertCurrentScenarioWorkflowAuthorized();
   const snapshot = cloneSnapshot(baseline);
   const touchedDealIds = new Set<string>();
   const touchedWorkOrderIds = new Set<string>();

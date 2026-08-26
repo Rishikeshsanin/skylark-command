@@ -1,4 +1,6 @@
 import type { DataQualityIssue, Deal, WorkOrder } from "../types";
+import { PublicApiError } from "./server/errors";
+import { currentWorkspaceDataScope } from "./data-platform/workspace-scope";
 import { fetchSkylarkSourceBoards } from "./monday";
 import type { MondayClientOptions } from "./monday";
 import { normalizeDeals, normalizeWorkOrders } from "./normalization";
@@ -46,12 +48,21 @@ export async function loadLiveBusinessData(options?: MondayClientOptions): Promi
 }
 
 /**
- * Canonical analytics loader. `SKYLARK_DATA_MODE=live` preserves V1 exactly;
- * temporal modes are resolved lazily so the live source adapter stays isolated.
+ * Canonical analytics loader. `SKYLARK_DATA_MODE=live` preserves V1 exactly.
+ * Authenticated workspace reads are fail-closed unless temporal storage is enabled,
+ * because the legacy live connector is intentionally a single public-demo source.
  */
 export async function loadBusinessData(options?: MondayClientOptions): Promise<BusinessDataSnapshot> {
   const mode = process.env.SKYLARK_DATA_MODE;
+  const workspaceKey = currentWorkspaceDataScope();
   if (mode !== "temporal_preferred" && mode !== "temporal_only") {
+    if (workspaceKey) {
+      throw new PublicApiError(
+        503,
+        "WORKSPACE_DATA_NOT_CONFIGURED",
+        "Workspace analytics require isolated temporal data serving.",
+      );
+    }
     return loadLiveBusinessData(options);
   }
 
@@ -59,5 +70,6 @@ export async function loadBusinessData(options?: MondayClientOptions): Promise<B
   return loadBusinessDataForAnalytics({
     mode,
     liveLoader: () => loadLiveBusinessData(options),
+    ...(workspaceKey ? { workspaceKey } : {}),
   });
 }

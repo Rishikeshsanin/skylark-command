@@ -15,6 +15,10 @@ export const DATA_PLATFORM_MIGRATIONS = [
     version: "002_temporal_production_hardening",
     file: "002_temporal_production_hardening.sql",
   },
+  {
+    version: "003_identity_workspace_rbac",
+    file: "003_identity_workspace_rbac.sql",
+  },
 ] as const;
 
 interface AppliedMigrationRow {

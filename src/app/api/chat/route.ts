@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  assertAnalyticalToolsAuthorized,
+  resolveAnalyticsAccess,
+} from "@/lib/auth/authorization";
+import { hasWorkspacePermission } from "@/lib/auth/rbac";
+import { withWorkspaceDataScope } from "@/lib/data-platform/workspace-scope";
 import { orchestrateFounderQuestionV2 } from "@/lib/agent/v2/orchestrator";
 import {
   chatRequestSchema,
@@ -69,25 +75,35 @@ export async function POST(request: Request) {
       });
     }
 
+    const access = await resolveAnalyticsAccess(request);
     const body = await parseJsonRequest(
       request,
       chatRequestSchema,
       MAX_REQUEST_BYTES,
     );
+    const scenarioAllowed = access.mode === "public_demo" ||
+      hasWorkspacePermission(access.membership.role, "SCENARIO_RUN");
 
-    const response = await orchestrateFounderQuestionV2(
-      body.message,
-      body.context,
-      undefined,
-      undefined,
-      requestId,
+    const response = await withWorkspaceDataScope(
+      access.mode === "workspace" ? access.workspaceKey : undefined,
+      scenarioAllowed,
+      () => orchestrateFounderQuestionV2(
+        body.message,
+        body.context,
+        undefined,
+        undefined,
+        requestId,
+      ),
     );
+    assertAnalyticalToolsAuthorized(access, response.analysis.toolsUsed);
 
     logEvent("info", "chat.completed", {
       requestId,
       route: "/api/chat",
       status: 200,
       latencyMs: Date.now() - startedAt,
+      accessMode: access.mode,
+      workspaceId: access.mode === "workspace" ? access.workspaceId : null,
       clarificationRequired: Boolean(response.clarification),
       planner: response.analysis.planner,
       toolsUsed: response.analysis.toolsUsed.join(" -> "),
