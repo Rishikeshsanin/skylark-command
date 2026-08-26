@@ -131,6 +131,14 @@ export async function POST(request: Request) {
       const safe = toSafePublicError(error);
       const response = withNoExecutionTrace(buildErrorAgentResponse(safe.code, safe.message), requestId);
       const rejected = safe.status < 500;
+      if (["INVALID_REQUEST", "INVALID_JSON", "MESSAGE_TOO_LONG", "REQUEST_TOO_LARGE", "UNSUPPORTED_MEDIA_TYPE"].includes(safe.code)) {
+        logEvent("warn", "copilot.schema_rejected", {
+          operation: "chat_schema_validation",
+          resultStatus: "rejected",
+          errorCode: safe.code,
+          errorCategory: "VALIDATION",
+        });
+      }
       logEvent(rejected ? "warn" : "error", rejected ? "chat.request_rejected" : "chat.failed", {
         operation: "chat_request",
         status: safe.status,
