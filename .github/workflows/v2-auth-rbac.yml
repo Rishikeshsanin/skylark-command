@@ -25,6 +25,28 @@ jobs:
       - name: Install exact lockfile dependencies
         run: npm ci
 
+      - name: Migration numbering guard
+        shell: bash
+        run: |
+          if git grep -nE '002_identity_[[:alnum:]_]*workspace_rbac' -- .; then
+            echo 'Legacy auth/RBAC migration 002 reference remains.' >&2
+            exit 1
+          fi
+          test -f src/lib/data-platform/migrations/001_temporal_intelligence.sql
+          test -f src/lib/data-platform/migrations/003_identity_workspace_rbac.sql
+          node <<'NODE'
+          const intendedIntegratedOrder = [
+            '001_temporal_intelligence',
+            '002_temporal_production_hardening',
+            '003_identity_workspace_rbac',
+          ];
+          const sorted = [...intendedIntegratedOrder].sort();
+          if (JSON.stringify(sorted) !== JSON.stringify(intendedIntegratedOrder)) {
+            throw new Error('Canonical integration migration order is invalid.');
+          }
+          NODE
+          echo 'Auth/RBAC migration numbering guard passed.'
+
       - name: Security tests
         run: npm test
 

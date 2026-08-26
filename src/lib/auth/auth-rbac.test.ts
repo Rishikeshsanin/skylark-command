@@ -246,7 +246,7 @@ describe("server-only and workspace persistence boundaries", () => {
 
   it("keeps persisted tenant resources workspace-scoped and connector tokens out of the response", () => {
     const migration = readFileSync(
-      join(process.cwd(), "src", "lib", "data-platform", "migrations", "002_identity_workspace_rbac.sql"),
+      join(process.cwd(), "src", "lib", "data-platform", "migrations", "003_identity_workspace_rbac.sql"),
       "utf8",
     );
     expect(migration).toContain("workspace_id UUID NOT NULL REFERENCES workspaces(id)");

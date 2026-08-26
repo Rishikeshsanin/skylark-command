@@ -10,9 +10,11 @@ export const DATA_PLATFORM_MIGRATIONS = [
     version: "001_temporal_intelligence",
     file: "001_temporal_intelligence.sql",
   },
+  // Migration 002 is canonically owned by v2/temporal-production as
+  // 002_temporal_production_hardening. This branch must not duplicate it.
   {
-    version: "002_identity_workspace_rbac",
-    file: "002_identity_workspace_rbac.sql",
+    version: "003_identity_workspace_rbac",
+    file: "003_identity_workspace_rbac.sql",
   },
 ] as const;
 

@@ -62,14 +62,22 @@ Permissions are intentionally coarse. New permission types should only be added 
 
 ## Workspace persistence
 
-Migration `002_identity_workspace_rbac.sql` adds:
+Migration `003_identity_workspace_rbac.sql` adds:
 
 - `workspaces`
 - `workspace_members`
 - `workspace_connectors`
 - `audit_events`
 
-It does not modify or delete migration `001_temporal_intelligence.sql`.
+It does not modify or delete migration `001_temporal_intelligence.sql`, and it does not recreate the temporal-production migration owned by `v2/temporal-production`.
+
+Canonical integration order:
+
+1. `001_temporal_intelligence`
+2. `002_temporal_production_hardening`
+3. `003_identity_workspace_rbac`
+
+This feature branch intentionally contains `001` and `003` only. The canonical `002_temporal_production_hardening.sql` remains owned by the completed `v2/temporal-production` branch and is expected to sit between them after integration.
 
 Existing temporal tables already use `workspace_key`. Authenticated workspace UUIDs are used as that key for scoped analytical reads. No user-controlled workspace identifier reaches temporal serving before membership authorization succeeds.
 
@@ -209,12 +217,13 @@ or `temporal_only`, plus snapshots persisted with the workspace UUID as `workspa
 
 ## Migration / deployment safety
 
-This branch only adds the migration file and migration-runner registration. It does **not** execute migration 002 against any database and does **not** deploy production.
+This branch only adds the auth/RBAC migration file and migration-runner registration. It does **not** execute migration 003 against any database and does **not** deploy production.
 
 Before integration/deployment:
 
-1. review migration 002;
-2. configure Supabase Auth URL/publishable key in the target environment;
-3. run `npm run db:migrate` only against the intended database;
-4. provision at least one workspace-specific temporal sync path before expecting authenticated workspace analytics;
-5. keep public demo mode available without a workspace header.
+1. integrate migrations in canonical order: `001_temporal_intelligence`, `002_temporal_production_hardening`, `003_identity_workspace_rbac`;
+2. review migration 003;
+3. configure Supabase Auth URL/publishable key in the target environment;
+4. run `npm run db:migrate` only against the intended database;
+5. provision at least one workspace-specific temporal sync path before expecting authenticated workspace analytics;
+6. keep public demo mode available without a workspace header.
