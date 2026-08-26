@@ -84,11 +84,17 @@ export async function runBusinessDataSyncCore(options: RunSyncCoreOptions): Prom
       freshness,
     };
   } catch (error) {
-    await options.store.failSync({
-      syncId,
-      finishedAt: now().toISOString(),
-      error: safeSyncError(error),
-    });
+    try {
+      await options.store.failSync({
+        syncId,
+        finishedAt: now().toISOString(),
+        error: safeSyncError(error),
+      });
+    } catch {
+      // Recording the failed run is best effort. A secondary database failure
+      // must never replace the original monday/persistence error seen by the
+      // caller; stale active runs are recovered by the next sync lease check.
+    }
     throw error;
   }
 }
