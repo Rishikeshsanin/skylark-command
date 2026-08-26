@@ -38,12 +38,10 @@ const snapshot: BusinessDataSnapshot = {
 };
 
 function contextFixture(): ConversationContext {
-  const toolCall: ToolCall = { tool: "getPipelineBySector", args: { sector: "Mining" } };
+  const toolCall: ToolCall = { tool: "getPipelineBySector", args: {} };
   return {
     version: 1,
-    dimension: "sector",
-    entity: { type: "sector", id: "Mining", label: "Mining" },
-    filters: [{ field: "sector", operator: "eq", value: "Mining" }],
+    filters: [],
     previousResult: {
       toolCall,
       snapshotId: "eval-snapshot",
