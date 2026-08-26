@@ -86,10 +86,12 @@ if (!temporalHardening.includes("WHERE status = 'syncing'")) {
 
 // ---------------------------------------------------------------------------
 // Merge-marker and tracked-secret sweep.
+// Markdown fenced examples are documentation, not unresolved conflict state.
 // ---------------------------------------------------------------------------
 const markerPattern = /^(?:<{7}|={7}|>{7})(?: .*)?$/m;
 for (const { file, text } of textFiles) {
-  if (markerPattern.test(text)) fail("Unresolved merge marker detected.", { file });
+  const markerScanText = file.endsWith(".md") ? text.replace(/```[\s\S]*?```/g, "") : text;
+  if (markerPattern.test(markerScanText)) fail("Unresolved merge marker detected.", { file });
 }
 
 const envFiles = files.filter((file) => path.basename(file).startsWith(".env"));
@@ -157,7 +159,12 @@ for (const { file, text } of apiFiles) {
 }
 
 const mondayClient = read("src/lib/monday/client.ts");
-if (!/\bmutation\b/i.test(mondayClient) || !mondayClient.includes("READ_ONLY_VIOLATION")) {
+if (
+  !mondayClient.includes("function assertReadOnlyQuery") ||
+  !mondayClient.includes("mutation") ||
+  !mondayClient.includes("READ_ONLY_VIOLATION") ||
+  !mondayClient.includes("assertReadOnlyQuery(query)")
+) {
   fail("monday.com read-only mutation rejection guard is missing.");
 }
 
