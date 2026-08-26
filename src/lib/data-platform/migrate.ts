@@ -10,6 +10,10 @@ export const DATA_PLATFORM_MIGRATIONS = [
     version: "001_temporal_intelligence",
     file: "001_temporal_intelligence.sql",
   },
+  {
+    version: "002_identity_workspace_rbac",
+    file: "002_identity_workspace_rbac.sql",
+  },
 ] as const;
 
 export async function runDataPlatformMigrations(sql: Sql = getTemporalSql()): Promise<string[]> {

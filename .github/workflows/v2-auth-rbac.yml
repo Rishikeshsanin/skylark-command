@@ -1,0 +1,48 @@
+name: V2 Auth RBAC
+
+on:
+  push:
+    branches:
+      - v2/auth-rbac
+
+permissions:
+  contents: read
+
+jobs:
+  validate-auth-rbac:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact lockfile dependencies
+        run: npm ci
+
+      - name: Security tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Server/client secret boundary scan
+        shell: bash
+        run: |
+          if git grep -nE 'sb_secret_[A-Za-z0-9._-]{12,}' -- ':!docs/**'; then
+            echo 'A Supabase secret key pattern is committed outside documentation.' >&2
+            exit 1
+          fi
+          if git grep -n 'SUPABASE_SECRET_KEY' -- 'src/**' '.env.example'; then
+            echo 'Supabase secret/service credentials must not be part of the application auth boundary.' >&2
+            exit 1
+          fi
+          echo 'Auth/RBAC secret boundary scan passed.'

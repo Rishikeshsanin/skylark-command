@@ -1,19 +1,11 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { matchesBearerSecret } from "@/lib/auth/internal-auth";
 import { runBusinessDataSync } from "@/lib/data-platform/sync";
 import { logEvent } from "@/lib/server/logger";
 import { createRequestId } from "@/lib/server/request-id";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-function matchesBearerToken(header: string | null, secret: string): boolean {
-  if (!header?.startsWith("Bearer ")) return false;
-  const supplied = header.slice("Bearer ".length);
-  const left = Buffer.from(supplied);
-  const right = Buffer.from(secret);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
 
 export async function GET(request: Request) {
   const requestId = createRequestId();
@@ -26,7 +18,7 @@ export async function GET(request: Request) {
     );
   }
 
-  if (!matchesBearerToken(request.headers.get("authorization"), secret)) {
+  if (!matchesBearerSecret(request.headers.get("authorization"), secret)) {
     return NextResponse.json(
       { ok: false, errorCode: "UNAUTHORIZED", requestId },
       { status: 401 },
