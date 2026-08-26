@@ -62,8 +62,8 @@ jobs:
           cat /tmp/skylark-v2-qa.log
           exit 1
 
-      - name: Chromium focused responsive visual and accessibility QA
-        run: node .github/scripts/v2-responsive-visual-qa.mjs
+      - name: Chromium final responsive visual and accessibility QA
+        run: node .github/scripts/v2-final-focused-qa.mjs
 
       - name: Production server diagnostics
         if: failure()
@@ -95,7 +95,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: v2-responsive-visual-qa
-          path: artifacts/v2-responsive-qa
+          path: artifacts/v2-responsive-final
           if-no-files-found: warn
           retention-days: 7
 
