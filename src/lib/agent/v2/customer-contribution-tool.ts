@@ -1,5 +1,6 @@
 import { calculateCustomerContribution } from "@/lib/analytics/customer-contribution";
 import type { BusinessDataSnapshot } from "@/lib/business-data";
+import { normalizeClientCode } from "@/lib/normalization/client-code";
 import { assessEvidenceQuality } from "@/lib/semantic/evidence-quality";
 import { buildAnswerLineage } from "@/lib/semantic/lineage";
 import { buildTrustResponse } from "@/lib/semantic/trust";
@@ -9,6 +10,7 @@ import type {
   AnalysisFilter,
   AnalysisPeriod,
   BaseToolCall,
+  ConversationContext,
   MetricId,
   ToolEvidence,
 } from "./contracts";
@@ -24,6 +26,10 @@ export interface CustomerContributionToolExecution {
   filters: AnalysisFilter[];
   evidence: ToolEvidence;
   semanticTrust: TrustResponse;
+}
+
+function lower(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 function statusForMetric(metricId: "open_pipeline_value" | "known_won_value"): "Open" | "Won" {
@@ -69,11 +75,100 @@ function issueCounts(snapshot: BusinessDataSnapshot) {
   );
 }
 
+function assertSourceEntities(call: CustomerContributionCall, baseline: BusinessDataSnapshot): void {
+  const sectors = new Set(baseline.deals.map((deal) => deal.sector).filter((value): value is string => Boolean(value)).map(lower));
+  const stages = new Set(baseline.deals.map((deal) => deal.stage).filter((value): value is string => Boolean(value)).map(lower));
+  const customers = new Set(baseline.deals.map((deal) => deal.normalizedClientKey).filter((value): value is string => Boolean(value)));
+  const dealIds = new Set(baseline.deals.map((deal) => deal.mondayItemId));
+
+  if (call.args.sector && !sectors.has(lower(call.args.sector))) {
+    throw new Error(`Customer contribution sector “${call.args.sector}” does not exist in the source snapshot.`);
+  }
+  if (call.args.stage && !stages.has(lower(call.args.stage))) {
+    throw new Error(`Customer contribution stage “${call.args.stage}” does not exist in the source snapshot.`);
+  }
+  if (call.args.customerKey) {
+    const normalized = normalizeClientCode(call.args.customerKey);
+    if (!normalized || !customers.has(normalized)) {
+      throw new Error(`Customer contribution customer “${call.args.customerKey}” does not exist as an exact normalized Deal customer.`);
+    }
+  }
+  for (const id of call.args.dealIds ?? []) {
+    if (!dealIds.has(id)) throw new Error(`Customer contribution Deal ${id} does not exist in the source snapshot.`);
+  }
+}
+
+function contextStringGrounded(value: string, field: "sector" | "stage" | "client", context?: ConversationContext): boolean {
+  const normalized = lower(value);
+  if (context?.entity && (lower(context.entity.id) === normalized || lower(context.entity.label ?? "") === normalized)) return true;
+  return context?.filters.some((filter) => filter.field === field && lower(filter.value as string) === normalized) ?? false;
+}
+
+function contextNumberGrounded(value: number, operator: "gte" | "lte", context?: ConversationContext): boolean {
+  return context?.filters.some(
+    (filter) => filter.field === "deal_value" && filter.operator === operator && filter.value === value,
+  ) ?? false;
+}
+
+export function validateCustomerContributionProposalGrounding(
+  call: CustomerContributionCall,
+  message: string,
+  context: ConversationContext | undefined,
+  baseline: BusinessDataSnapshot,
+  mentionedMoney: number | null,
+): string | null {
+  try {
+    assertSourceEntities(call, baseline);
+  } catch (error) {
+    return error instanceof Error ? error.message : "Customer contribution source grounding failed.";
+  }
+
+  const messageLower = lower(message);
+  const checkString = (value: string | undefined, field: "sector" | "stage" | "client", label: string) => {
+    if (!value) return null;
+    return messageLower.includes(lower(value)) || contextStringGrounded(value, field, context)
+      ? null
+      : `${label} “${value}” was not grounded in the user message or structured context.`;
+  };
+
+  const sectorIssue = checkString(call.args.sector, "sector", "Sector");
+  if (sectorIssue) return sectorIssue;
+  const stageIssue = checkString(call.args.stage, "stage", "Stage");
+  if (stageIssue) return stageIssue;
+  const customerIssue = checkString(call.args.customerKey, "client", "Customer");
+  if (customerIssue) return customerIssue;
+
+  if (call.args.minDealValue !== undefined && mentionedMoney !== call.args.minDealValue && !contextNumberGrounded(call.args.minDealValue, "gte", context)) {
+    return "Minimum Deal value was not grounded in the user message or structured context.";
+  }
+  if (call.args.maxDealValue !== undefined && mentionedMoney !== call.args.maxDealValue && !contextNumberGrounded(call.args.maxDealValue, "lte", context)) {
+    return "Maximum Deal value was not grounded in the user message or structured context.";
+  }
+
+  const metricId = call.args.metricId ?? (call.args.status === "Won" ? "known_won_value" : "open_pipeline_value");
+  const status = call.args.status ?? statusForMetric(metricId);
+  const statusGrounded = messageLower.includes(lower(status)) ||
+    context?.metricId === metricId ||
+    context?.filters.some((filter) => filter.field === "status" && filter.value === status);
+  if (!statusGrounded && (call.args.metricId !== undefined || call.args.status !== undefined)) {
+    return `Deal status ${status} was not grounded in the request or prior semantic metric context.`;
+  }
+
+  const contextDealIds = context?.filters.find((filter) => filter.field === "deal_ids");
+  for (const id of call.args.dealIds ?? []) {
+    const grounded = messageLower.includes(lower(id)) ||
+      (contextDealIds?.field === "deal_ids" && contextDealIds.value.includes(id));
+    if (!grounded) return `Deal ${id} was not grounded in the user message or structured context.`;
+  }
+  return null;
+}
+
 export function executeCustomerContributionTool(
   call: CustomerContributionCall,
   baseline: BusinessDataSnapshot,
   resolvedPeriod: string | null,
 ): CustomerContributionToolExecution {
+  assertSourceEntities(call, baseline);
   const result = calculateCustomerContribution(baseline.deals, {
     metricId: call.args.metricId,
     status: call.args.status,
