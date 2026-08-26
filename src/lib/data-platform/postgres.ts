@@ -4,6 +4,7 @@ import postgres, { type Sql } from "postgres";
 import type { BusinessDataSnapshot } from "@/lib/business-data";
 import type { Deal, WorkOrder } from "@/types";
 import type {
+  ListSuccessfulSnapshotsInput,
   PersistSnapshotInput,
   PersistSnapshotResult,
   StoredBusinessDataSnapshot,
@@ -11,6 +12,7 @@ import type {
   TemporalFreshness,
   TemporalSnapshotStore,
 } from "./contracts";
+import { normalizeSuccessfulSnapshotQuery } from "./history-query";
 
 const DEFAULT_MAX_CONNECTIONS = 3;
 
@@ -225,20 +227,7 @@ export class PostgresTemporalSnapshotStore implements TemporalSnapshotStore {
     return toSyncRun(row);
   }
 
-  async loadLatestSuccessfulSnapshot(workspaceKey: string): Promise<StoredBusinessDataSnapshot | null> {
-    const rows = await this.sql<SnapshotRow[]>`
-      SELECT s.id, s.workspace_key, s.snapshot_time, s.source_fetched_at,
-             s.source_watermark, s.source_metadata, s.normalization_issues
-      FROM sync_runs r
-      JOIN analytical_snapshots s ON s.id = r.snapshot_id
-      WHERE r.workspace_key = ${workspaceKey}
-        AND r.status = 'succeeded'
-      ORDER BY r.finished_at DESC NULLS LAST, r.started_at DESC
-      LIMIT 1
-    `;
-    const snapshot = rows[0];
-    if (!snapshot) return null;
-
+  private async hydrateSnapshot(snapshot: SnapshotRow): Promise<StoredBusinessDataSnapshot> {
     const deals = await this.sql<{ normalized_payload: Deal }[]>`
       SELECT normalized_payload
       FROM deal_snapshots
@@ -263,6 +252,67 @@ export class PostgresTemporalSnapshotStore implements TemporalSnapshotStore {
         sourceWatermark: snapshot.source_watermark,
       },
     };
+  }
+
+  async loadLatestSuccessfulSnapshot(workspaceKey: string): Promise<StoredBusinessDataSnapshot | null> {
+    const rows = await this.sql<SnapshotRow[]>`
+      SELECT s.id, s.workspace_key, s.snapshot_time, s.source_fetched_at,
+             s.source_watermark, s.source_metadata, s.normalization_issues
+      FROM sync_runs r
+      JOIN analytical_snapshots s ON s.id = r.snapshot_id
+      WHERE r.workspace_key = ${workspaceKey}
+        AND r.status = 'succeeded'
+      ORDER BY r.finished_at DESC NULLS LAST, r.started_at DESC
+      LIMIT 1
+    `;
+    const snapshot = rows[0];
+    return snapshot ? this.hydrateSnapshot(snapshot) : null;
+  }
+
+  async listSuccessfulSnapshots(
+    input: ListSuccessfulSnapshotsInput,
+  ): Promise<StoredBusinessDataSnapshot[]> {
+    const query = normalizeSuccessfulSnapshotQuery(input);
+    const from = query.fromSnapshotTime;
+    const to = query.toSnapshotTime;
+
+    const rows = query.order === "asc"
+      ? await this.sql<SnapshotRow[]>`
+          SELECT s.id, s.workspace_key, s.snapshot_time, s.source_fetched_at,
+                 s.source_watermark, s.source_metadata, s.normalization_issues
+          FROM analytical_snapshots s
+          WHERE s.workspace_key = ${query.workspaceKey}
+            AND s.snapshot_time >= COALESCE(${from}, '-infinity'::timestamptz)
+            AND s.snapshot_time <= COALESCE(${to}, 'infinity'::timestamptz)
+            AND EXISTS (
+              SELECT 1
+              FROM sync_runs r
+              WHERE r.workspace_key = ${query.workspaceKey}
+                AND r.snapshot_id = s.id
+                AND r.status = 'succeeded'
+            )
+          ORDER BY s.snapshot_time ASC, s.id ASC
+          LIMIT ${query.limit}
+        `
+      : await this.sql<SnapshotRow[]>`
+          SELECT s.id, s.workspace_key, s.snapshot_time, s.source_fetched_at,
+                 s.source_watermark, s.source_metadata, s.normalization_issues
+          FROM analytical_snapshots s
+          WHERE s.workspace_key = ${query.workspaceKey}
+            AND s.snapshot_time >= COALESCE(${from}, '-infinity'::timestamptz)
+            AND s.snapshot_time <= COALESCE(${to}, 'infinity'::timestamptz)
+            AND EXISTS (
+              SELECT 1
+              FROM sync_runs r
+              WHERE r.workspace_key = ${query.workspaceKey}
+                AND r.snapshot_id = s.id
+                AND r.status = 'succeeded'
+            )
+          ORDER BY s.snapshot_time DESC, s.id DESC
+          LIMIT ${query.limit}
+        `;
+
+    return Promise.all(rows.map((snapshot) => this.hydrateSnapshot(snapshot)));
   }
 
   async getFreshness(input: {
