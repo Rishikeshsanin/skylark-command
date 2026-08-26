@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type { BusinessDataSnapshot } from "@/lib/business-data";
 import type {
+  ListSuccessfulSnapshotsInput,
   PersistSnapshotInput,
   PersistSnapshotResult,
   StoredBusinessDataSnapshot,
@@ -11,6 +12,7 @@ import type {
   TemporalFreshness,
   TemporalSnapshotStore,
 } from "@/lib/data-platform/contracts";
+import { normalizeSuccessfulSnapshotQuery } from "@/lib/data-platform/history-query";
 import { loadBusinessDataFromTemporalStore } from "@/lib/data-platform/serving-core";
 import { runBusinessDataSyncCore } from "@/lib/data-platform/sync-core";
 import { calculateSourceWatermark } from "@/lib/data-platform/watermark";
@@ -103,6 +105,31 @@ class MemoryTemporalStore implements TemporalSnapshotStore {
       .reverse()
       .find((run) => run.workspaceKey === workspaceKey && run.status === "succeeded" && run.snapshotId);
     return success?.snapshotId ? this.snapshotsById.get(success.snapshotId) ?? null : null;
+  }
+
+  async listSuccessfulSnapshots(input: ListSuccessfulSnapshotsInput) {
+    const query = normalizeSuccessfulSnapshotQuery(input);
+    const successfulSnapshotIds = new Set(
+      this.runs
+        .filter((run) => run.workspaceKey === query.workspaceKey && run.status === "succeeded" && run.snapshotId)
+        .map((run) => run.snapshotId as string),
+    );
+    const uniqueByWatermark = new Map<string, StoredBusinessDataSnapshot>();
+    for (const snapshot of this.snapshotsById.values()) {
+      if (!successfulSnapshotIds.has(snapshot.temporal.snapshotId)) continue;
+      if (query.fromSnapshotTime && Date.parse(snapshot.temporal.snapshotTime) < Date.parse(query.fromSnapshotTime)) continue;
+      if (query.toSnapshotTime && Date.parse(snapshot.temporal.snapshotTime) > Date.parse(query.toSnapshotTime)) continue;
+      if (!uniqueByWatermark.has(snapshot.temporal.sourceWatermark)) {
+        uniqueByWatermark.set(snapshot.temporal.sourceWatermark, snapshot);
+      }
+    }
+    return [...uniqueByWatermark.values()]
+      .sort((a, b) => {
+        const delta = Date.parse(a.temporal.snapshotTime) - Date.parse(b.temporal.snapshotTime)
+          || a.temporal.snapshotId.localeCompare(b.temporal.snapshotId);
+        return query.order === "asc" ? delta : -delta;
+      })
+      .slice(0, query.limit);
   }
 
   async getFreshness(input: { workspaceKey: string; now: string; staleAfterMs: number }): Promise<TemporalFreshness> {
@@ -217,6 +244,21 @@ test("latest successful snapshot preserves nulls and source provenance", async (
   assert.equal(stored.source.workOrdersBoardName, "Skylark Command — Work Orders");
   assert.equal(stored.source.fetchedAt, "2026-08-25T10:00:00.000Z");
   assert.match(stored.temporal.sourceWatermark, /^sha256:[a-f0-9]{64}$/);
+});
+
+test("successful snapshot enumeration is bounded, ordered, workspace-scoped and deduplicated", async () => {
+  const store = new MemoryTemporalStore();
+  await runBusinessDataSyncCore(syncOptions(store, async () => snapshot("2026-08-25T10:00:00.000Z"), ["sync-1", "snapshot-1"], "2026-08-25T10:05:00.000Z"));
+  await runBusinessDataSyncCore(syncOptions(store, async () => snapshot("2026-08-25T11:00:00.000Z"), ["sync-2", "snapshot-2"], "2026-08-25T11:05:00.000Z"));
+  const changed = snapshot("2026-08-25T12:00:00.000Z");
+  changed.deals[1] = { ...changed.deals[1], value: 900 };
+  await runBusinessDataSyncCore(syncOptions(store, async () => changed, ["sync-3", "snapshot-3"], "2026-08-25T12:05:00.000Z"));
+
+  const desc = await store.listSuccessfulSnapshots({ workspaceKey: "skylark-command", order: "desc", limit: 1 });
+  assert.equal(desc.length, 1);
+  assert.equal(desc[0].temporal.snapshotId, "snapshot-3");
+  assert.equal((await store.listSuccessfulSnapshots({ workspaceKey: "other-workspace" })).length, 0);
+  assert.equal(store.snapshotsById.size, 2);
 });
 
 test("freshness distinguishes fresh, stale, syncing, and failed", async () => {
