@@ -14,7 +14,9 @@ import type {
 } from "./contracts";
 import { normalizeSuccessfulSnapshotQuery } from "./history-query";
 
-const DEFAULT_MAX_CONNECTIONS = 3;
+const DEFAULT_MAX_CONNECTIONS = 1;
+const MAX_SERVERLESS_CONNECTIONS = 5;
+export const SYNC_ACTIVE_LEASE_MS = 15 * 60 * 1000;
 
 type TimestampValue = string | Date | null;
 
@@ -73,6 +75,13 @@ function qualityMetadata(record: Deal | WorkOrder) {
   };
 }
 
+export function resolveTemporalMaxConnections(value = process.env.SKYLARK_DB_MAX_CONNECTIONS): number {
+  if (!value?.trim()) return DEFAULT_MAX_CONNECTIONS;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return DEFAULT_MAX_CONNECTIONS;
+  return Math.min(parsed, MAX_SERVERLESS_CONNECTIONS);
+}
+
 export class PostgresTemporalSnapshotStore implements TemporalSnapshotStore {
   constructor(private readonly sql: Sql) {}
 
@@ -81,16 +90,47 @@ export class PostgresTemporalSnapshotStore implements TemporalSnapshotStore {
     workspaceKey: string;
     startedAt: string;
   }): Promise<SyncRunRecord> {
-    const [row] = await this.sql<SyncRunRow[]>`
-      INSERT INTO sync_runs (
-        id, workspace_key, source_provider, started_at, status
-      ) VALUES (
-        ${input.syncId}, ${input.workspaceKey}, 'monday.com', ${input.startedAt}, 'syncing'
-      )
-      RETURNING *
-    `;
-    if (!row) throw new Error("Failed to create sync run.");
-    return toSyncRun(row);
+    return this.sql.begin(async (tx) => {
+      const cutoff = new Date(Date.parse(input.startedAt) - SYNC_ACTIVE_LEASE_MS).toISOString();
+
+      // Serverless invocations can terminate after beginSync without reaching
+      // failSync. Expire only clearly abandoned leases before admitting a new
+      // run; a recent active run remains fail-closed.
+      await tx`
+        UPDATE sync_runs
+        SET finished_at = COALESCE(finished_at, ${input.startedAt}),
+            status = 'failed',
+            error_text = COALESCE(
+              NULLIF(error_text, ''),
+              'Prior synchronization exceeded its active lease and was marked failed before a new sync began.'
+            )
+        WHERE workspace_key = ${input.workspaceKey}
+          AND status = 'syncing'
+          AND started_at < ${cutoff}
+      `;
+
+      const active = await tx<{ id: string }[]>`
+        SELECT id
+        FROM sync_runs
+        WHERE workspace_key = ${input.workspaceKey}
+          AND status = 'syncing'
+        LIMIT 1
+      `;
+      if (active.length > 0) {
+        throw new Error("A temporal synchronization is already in progress for this workspace.");
+      }
+
+      const [row] = await tx<SyncRunRow[]>`
+        INSERT INTO sync_runs (
+          id, workspace_key, source_provider, started_at, status
+        ) VALUES (
+          ${input.syncId}, ${input.workspaceKey}, 'monday.com', ${input.startedAt}, 'syncing'
+        )
+        RETURNING *
+      `;
+      if (!row) throw new Error("Failed to create sync run.");
+      return toSyncRun(row);
+    });
   }
 
   async persistSnapshot(input: PersistSnapshotInput): Promise<PersistSnapshotResult> {
@@ -376,7 +416,7 @@ export function getTemporalSql(): Sql {
 
   if (!globalSql.__skylarkTemporalSql) {
     globalSql.__skylarkTemporalSql = postgres(connectionString, {
-      max: DEFAULT_MAX_CONNECTIONS,
+      max: resolveTemporalMaxConnections(),
       idle_timeout: 20,
       connect_timeout: 10,
       prepare: false,
