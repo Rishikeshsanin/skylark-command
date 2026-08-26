@@ -21,12 +21,14 @@ import {
   type ToolCall,
   type ToolEvidence,
 } from "./contracts";
+import { executeCustomerContributionTool } from "./customer-contribution-tool";
 import { applyScenarioOverrides } from "./scenario-engine";
 
 export const APPROVED_TOOL_IDS = [
   "getPipelineSummary",
   "getPipelineBySector",
   "getPipelineByStage",
+  "getCustomerContribution",
   "getCustomer360",
   "getReceivables",
   "getWorkOrderHealth",
@@ -113,8 +115,10 @@ function applyFilters(
   const quarter = resolvePeriod(period);
   const sector = filters.find((filter) => filter.field === "sector");
   const stage = filters.find((filter) => filter.field === "stage");
+  const status = filters.find((filter) => filter.field === "status");
   const client = filters.find((filter) => filter.field === "client");
-  const minDealValue = filters.find((filter) => filter.field === "deal_value");
+  const minDealValue = filters.find((filter) => filter.field === "deal_value" && filter.operator === "gte");
+  const maxDealValue = filters.find((filter) => filter.field === "deal_value" && filter.operator === "lte");
   const dealIds = filters.find((filter) => filter.field === "deal_ids");
   const workOrderIds = filters.find((filter) => filter.field === "work_order_ids");
 
@@ -122,8 +126,10 @@ function applyFilters(
     if (!periodMatches(getDealPeriodDate(deal), quarter)) return false;
     if (sector?.field === "sector" && (deal.sector ?? "").toLowerCase() !== sector.value.toLowerCase()) return false;
     if (stage?.field === "stage" && (deal.stage ?? "").toLowerCase() !== stage.value.toLowerCase()) return false;
+    if (status?.field === "status" && (deal.status ?? "").toLowerCase() !== status.value.toLowerCase()) return false;
     if (client?.field === "client" && deal.normalizedClientKey !== client.value) return false;
     if (minDealValue?.field === "deal_value" && (deal.value === null || deal.value < minDealValue.value)) return false;
+    if (maxDealValue?.field === "deal_value" && (deal.value === null || deal.value > maxDealValue.value)) return false;
     if (dealIds?.field === "deal_ids" && !dealIds.value.includes(deal.mondayItemId)) return false;
     return true;
   });
@@ -168,8 +174,14 @@ function mergeEvidence(...items: ToolEvidence[]): ToolEvidence {
 function semanticLineageFilters(filters: AnalysisFilter[]): LineageFilter[] {
   const lineageFilters: LineageFilter[] = [];
   for (const filter of filters) {
-    if (filter.field === "sector" || filter.field === "stage" || filter.field === "client") {
+    if (filter.field === "sector" || filter.field === "stage" || filter.field === "client" || filter.field === "status") {
       lineageFilters.push({ dimension: filter.field, operator: "eq", values: [filter.value] });
+    }
+    if (filter.field === "deal_value") {
+      lineageFilters.push({ field: "deal_value", operator: filter.operator, value: filter.value });
+    }
+    if (filter.field === "deal_ids") {
+      lineageFilters.push({ field: "deal_ids", operator: "in", values: filter.value });
     }
   }
   return lineageFilters;
@@ -191,11 +203,13 @@ function trustFor(
 ): TrustResponse {
   const resolvedPeriod = resolvePeriod(period);
   const analysisTimestamp = new Date().toISOString();
+  const lineageFilters = semanticLineageFilters(filters);
+  if (resolvedPeriod) lineageFilters.push({ dimension: "quarter", operator: "eq", values: [resolvedPeriod] });
   const lineage = buildAnswerLineage({
     metricIds,
     snapshot,
     analysisTimestamp,
-    filters: semanticLineageFilters(filters),
+    filters: lineageFilters,
     timeRange: resolvedPeriod
       ? { dimension: "quarter", label: resolvedPeriod }
       : undefined,
@@ -271,6 +285,8 @@ function metricIdsFor(call: BaseToolCall): MetricId[] {
       return ["open_pipeline_value", "known_won_value", "open_deal_count"];
     case "getPipelineByStage":
       return ["open_pipeline_value", "open_deal_count"];
+    case "getCustomerContribution":
+      return [call.args.metricId ?? (call.args.status === "Won" ? "known_won_value" : "open_pipeline_value")];
     case "getCustomer360":
       return ["open_pipeline_value", "receivables", "total_work_order_value", "active_work_order_count"];
     case "getReceivables":
@@ -285,7 +301,7 @@ function metricIdsFor(call: BaseToolCall): MetricId[] {
 function comparisonBaseCall(call: Extract<BaseToolCall, { tool: "getPeriodComparison" }>, period: AnalysisPeriod): BaseToolCall {
   const sectorFilter = call.args.filters.find((filter) => filter.field === "sector");
   const stageFilter = call.args.filters.find((filter) => filter.field === "stage");
-  const minValueFilter = call.args.filters.find((filter) => filter.field === "deal_value");
+  const minValueFilter = call.args.filters.find((filter) => filter.field === "deal_value" && filter.operator === "gte");
   const sector = call.args.dimension === "sector" && call.args.entity
     ? call.args.entity
     : sectorFilter?.field === "sector"
@@ -336,6 +352,16 @@ async function executeBaseTool(call: BaseToolCall, baseline: BusinessDataSnapsho
       filters: call.args.filters,
       evidence: mergeEvidence(from.evidence, to.evidence),
       semanticTrust: to.semanticTrust,
+    };
+  }
+
+  if (call.tool === "getCustomerContribution") {
+    const execution = executeCustomerContributionTool(call, baseline, resolvePeriod(call.args.period));
+    return {
+      ...execution,
+      source,
+      snapshotId,
+      toolsUsed: [call.tool],
     };
   }
 
@@ -398,7 +424,7 @@ async function executeBaseTool(call: BaseToolCall, baseline: BusinessDataSnapsho
     result.caveats = [...result.caveats, `V2 tool scope is restricted deterministically to ${periodLabel}.`];
   }
   if (filters.some((filter) => filter.field === "deal_value")) {
-    result.caveats = [...result.caveats, "The explicit Deal-value threshold is enforced by the V2 tool pre-filter and is shown in the Copilot filter trace; Agent 2 semantic lineage currently models categorical dimensions only."];
+    result.caveats = [...result.caveats, "The explicit Deal-value threshold is enforced by the V2 tool pre-filter and is shown in the Copilot filter trace; semantic lineage records the same deterministic predicate."];
   }
   const metricIds = metricIdsFor(call);
   return {
@@ -460,6 +486,7 @@ export function legacyPlanForTool(call: ToolCall): QueryPlan {
     case "getPipelineSummary": return { intent: "pipeline_overview", confidence: 1 };
     case "getPipelineBySector": return { intent: "pipeline_by_sector", confidence: 1 };
     case "getPipelineByStage": return { intent: "pipeline_by_stage", confidence: 1 };
+    case "getCustomerContribution": return { intent: "client_cross_board", confidence: 1 };
     case "getCustomer360": return { intent: "client_cross_board", confidence: 1 };
     case "getReceivables": return { intent: "receivables", confidence: 1 };
     case "getWorkOrderHealth": return { intent: "work_order_health", confidence: 1 };
