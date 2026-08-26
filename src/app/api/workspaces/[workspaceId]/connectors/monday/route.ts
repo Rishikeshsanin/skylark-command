@@ -15,10 +15,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BODY_BYTES = 16_384;
+const boardIdSchema = z.string().trim().min(1).max(32).regex(/^\d+$/);
+const mondayConfigSchema = z.object({
+  dealsBoardId: boardIdSchema.optional(),
+  workOrdersBoardId: boardIdSchema.optional(),
+}).strict();
 const connectorSchema = z.object({
   credentialRef: z.string().trim().min(5).max(255),
   externalAccountRef: z.string().trim().min(1).max(255).nullable().optional(),
-  config: z.record(z.string(), z.unknown()).default({}),
+  config: mondayConfigSchema.default({}),
 }).strict();
 
 type RouteContext = { params: Promise<{ workspaceId: string }> };

@@ -3,6 +3,7 @@ import {
   assertAnalyticalToolsAuthorized,
   resolveAnalyticsAccess,
 } from "@/lib/auth/authorization";
+import { hasWorkspacePermission } from "@/lib/auth/rbac";
 import { withWorkspaceDataScope } from "@/lib/data-platform/workspace-scope";
 import { orchestrateFounderQuestionV2 } from "@/lib/agent/v2/orchestrator";
 import {
@@ -80,9 +81,12 @@ export async function POST(request: Request) {
       chatRequestSchema,
       MAX_REQUEST_BYTES,
     );
+    const scenarioAllowed = access.mode === "public_demo" ||
+      hasWorkspacePermission(access.membership.role, "SCENARIO_RUN");
 
     const response = await withWorkspaceDataScope(
       access.mode === "workspace" ? access.workspaceKey : undefined,
+      scenarioAllowed,
       () => orchestrateFounderQuestionV2(
         body.message,
         body.context,
