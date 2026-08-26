@@ -37,6 +37,10 @@ export const COPILOT_QUALITY_EVAL: CopilotQualityEvalCase[] = [
   { id: "analytics-sector", message: "which sector has the largest open pipeline", expectedRoute: "SUPPORTED_ANALYTICS", behavior: "approved_analytics" },
   { id: "analytics-work-orders", message: "show work order health", expectedRoute: "SUPPORTED_ANALYTICS", behavior: "approved_analytics" },
   { id: "analytics-customer", message: "show customer COMPANY001", expectedRoute: "SUPPORTED_ANALYTICS", behavior: "approved_analytics" },
+  { id: "analytics-change-week", message: "What changed since last week?", expectedRoute: "SUPPORTED_ANALYTICS", behavior: "approved_analytics" },
+  { id: "analytics-change-pipeline", message: "What changed in pipeline?", expectedRoute: "SUPPORTED_ANALYTICS", behavior: "approved_analytics" },
+  { id: "analytics-change-customers", message: "Which customers changed the most?", expectedRoute: "SUPPORTED_ANALYTICS", behavior: "approved_analytics" },
+  { id: "analytics-change-receivables", message: "What changed in receivables?", expectedRoute: "SUPPORTED_ANALYTICS", behavior: "approved_analytics" },
 
   { id: "unknown-sector", message: "how is energy sector performing", expectedRoute: "SUPPORTED_ANALYTICS", behavior: "entity_no_match" },
   { id: "unknown-sector-explicit", message: "show a nonexistent sector", expectedRoute: "SUPPORTED_ANALYTICS", behavior: "entity_no_match" },
