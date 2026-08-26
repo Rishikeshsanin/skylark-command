@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Sql } from "postgres";
-import { checksumMigration, runDataPlatformMigrations } from "./migrate";
+import {
+  checksumMigration,
+  DATA_PLATFORM_MIGRATIONS,
+  runDataPlatformMigrations,
+} from "./migrate";
 
 function fakeMigrationSql() {
   const migrations = new Map<string, string | null>();
@@ -41,20 +45,34 @@ function fakeMigrationSql() {
   return { sql, migrations, unsafeStatements };
 }
 
+const canonicalOrder = [
+  "001_temporal_intelligence",
+  "002_temporal_production_hardening",
+  "003_identity_workspace_rbac",
+] as const;
+
 describe("temporal migration production guardrails", () => {
-  it("applies each version once and is idempotent on a second run", async () => {
+  it("discovers and applies the canonical 001/002/003 order exactly once", async () => {
+    expect(DATA_PLATFORM_MIGRATIONS.map((migration) => migration.version)).toEqual(canonicalOrder);
+
     const fake = fakeMigrationSql();
-    expect(await runDataPlatformMigrations(fake.sql)).toEqual([
-      "001_temporal_intelligence",
-      "002_temporal_production_hardening",
-    ]);
+    expect(await runDataPlatformMigrations(fake.sql)).toEqual(canonicalOrder);
     expect(await runDataPlatformMigrations(fake.sql)).toEqual([]);
-    expect(fake.migrations.size).toBe(2);
+    expect(fake.migrations.size).toBe(3);
+
     for (const checksum of fake.migrations.values()) {
       expect(checksum).toMatch(/^sha256:[a-f0-9]{64}$/);
     }
-    expect(fake.unsafeStatements.some((statement) => statement.includes("analytical_snapshots_workspace_time_idx"))).toBe(true);
-    expect(fake.unsafeStatements.some((statement) => statement.includes("sync_runs_workspace_active_idx"))).toBe(true);
+
+    expect(
+      fake.unsafeStatements.some((statement) => statement.includes("analytical_snapshots_workspace_time_idx")),
+    ).toBe(true);
+    expect(
+      fake.unsafeStatements.some((statement) => statement.includes("sync_runs_workspace_active_idx")),
+    ).toBe(true);
+    expect(
+      fake.unsafeStatements.some((statement) => statement.includes("workspace_members")),
+    ).toBe(true);
   });
 
   it("fails closed when an already-recorded migration changes", async () => {
