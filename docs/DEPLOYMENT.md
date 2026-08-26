@@ -1,92 +1,178 @@
-# Deployment Readiness
+# Deployment
 
-This document describes release configuration for Skylark Command application RC3 (`039cadfda8678ff82e105bf5fea2da72937c18c6`). It is **not** authorization to deploy: final independent Agent 5 approval is still required, and this documentation branch does not merge `main` or deploy.
+Skylark Command targets a Node.js Next.js runtime and can operate in either current-state live mode or a PostgreSQL-backed temporal mode.
 
 ## Platform baseline
 
 - Next.js 16 App Router
+- React 19
 - TypeScript
-- `/api/chat` runtime: Node.js
-- Minimum Node.js: 20.9+
-- Package manager: npm
-- Vercel framework preset: Next.js / auto-detect
-- Repository root: `.`
-- Install: `npm ci`
-- Build: `npm run build`
-- Do not configure a static export
+- Node.js 20.9+
+- npm / `package-lock.json`
+- Vercel-compatible Node runtime
+- PostgreSQL required only for temporal-history modes
 
-## Required server environment variables
-
-Configure these for any final Preview/Production environment:
-
-| Variable | Required | Purpose | Secret? |
-| --- | --- | --- | --- |
-| `MONDAY_API_TOKEN` | Yes | Authenticates monday.com GraphQL reads | Yes |
-| `MONDAY_DEALS_BOARD_ID` | Yes | Deals board ID (`5030844099`) | Non-secret server configuration |
-| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes | Work Orders board ID (`5030844103`) | Non-secret server configuration |
-
-The data client requires non-empty values and numeric board IDs. Never expose the token through `NEXT_PUBLIC_` variables or commit a real value.
-
-## Gemini executive explanation provider
-
-RC3 uses Google Gemini for optional qualitative executive explanation:
+Recommended build configuration:
 
 ```text
-gemini-2.5-flash-lite
+Repository root: .
+Install: npm ci
+Build: npm run build
+Framework: Next.js / auto-detect
 ```
 
-Key precedence is:
+Do not configure a static export; the application has dynamic server routes.
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `GEMINI_API_KEY` | No | Preferred Gemini server API key |
-| `AI_API_KEY` | No | Backward-compatible fallback when `GEMINI_API_KEY` is unset |
+## Environment variables
 
-If both are configured, `GEMINI_API_KEY` wins. Both are server-only secrets and must never use a `NEXT_PUBLIC_` prefix.
+### Live source — required
 
-Gemini is not the source of business arithmetic. The planner/dispatcher runs deterministic analytics first. If Gemini is unavailable, times out, is rate-limited, or returns invalid output, the request retains authoritative deterministic `response.data` and uses the deterministic explanation fallback.
+| Variable | Required | Secret | Purpose |
+| --- | --- | --- | --- |
+| `MONDAY_API_TOKEN` | Yes | Yes | Server-side monday.com GraphQL reads |
+| `MONDAY_DEALS_BOARD_ID` | Yes | No | Deals board ID |
+| `MONDAY_WORK_ORDERS_BOARD_ID` | Yes | No | Work Orders board ID |
 
-## Canonical API routes
+### Optional AI provider
+
+| Variable | Required | Secret | Purpose |
+| --- | --- | --- | --- |
+| `GEMINI_API_KEY` | No | Yes | Preferred Gemini planning/interpretation key |
+| `AI_API_KEY` | No | Yes | Backward-compatible fallback when `GEMINI_API_KEY` is unset |
+
+If both are set, `GEMINI_API_KEY` takes precedence. Deterministic analytics do not require either provider key.
+
+### Temporal data platform
+
+| Variable | Required | Secret | Purpose |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | For temporal modes | Yes | PostgreSQL connection string for analytical snapshots |
+| `SKYLARK_DATA_MODE` | No | No | `live`, `temporal_preferred`, or `temporal_only`; defaults to `live` |
+| `SKYLARK_WORKSPACE_KEY` | No | No | Workspace namespace for temporal snapshots; defaults to `skylark-command` |
+| `SKYLARK_STALE_AFTER_MINUTES` | No | No | Freshness threshold for temporal serving; defaults to 60 |
+| `CRON_SECRET` | For sync endpoint | Yes | Bearer secret protecting `/api/internal/sync/monday` |
+
+Never expose any secret through a `NEXT_PUBLIC_` variable.
+
+## Example configuration
+
+### Current-state live mode
+
+```dotenv
+MONDAY_API_TOKEN=<server-side-token>
+MONDAY_DEALS_BOARD_ID=<deals-board-id>
+MONDAY_WORK_ORDERS_BOARD_ID=<work-orders-board-id>
+SKYLARK_DATA_MODE=live
+
+# Optional
+GEMINI_API_KEY=<server-side-key>
+```
+
+### Temporal-preferred mode
+
+```dotenv
+MONDAY_API_TOKEN=<server-side-token>
+MONDAY_DEALS_BOARD_ID=<deals-board-id>
+MONDAY_WORK_ORDERS_BOARD_ID=<work-orders-board-id>
+
+DATABASE_URL=<postgres-connection-string>
+CRON_SECRET=<high-entropy-server-secret>
+SKYLARK_DATA_MODE=temporal_preferred
+SKYLARK_WORKSPACE_KEY=skylark-command
+SKYLARK_STALE_AFTER_MINUTES=60
+
+# Optional
+GEMINI_API_KEY=<server-side-key>
+```
+
+## Database migration
+
+Temporal mode requires the repository migration to be applied before snapshot reads/writes:
+
+```bash
+npm run db:migrate
+```
+
+The migration creates the temporal intelligence tables used for sync runs, analytical snapshots, and normalized Deal/Work Order records.
+
+Apply migrations using a trusted deployment/admin environment. Do not expose database credentials to the browser.
+
+## Data serving modes
+
+### `live`
+
+Reads current monday.com data for analytics. PostgreSQL is not required.
+
+### `temporal_preferred`
+
+Uses the temporal data platform according to the serving contract and can retain live data availability when durable history is not usable. This mode is appropriate when historical snapshots are being operationalized but current-state analytics must remain resilient.
+
+### `temporal_only`
+
+Requires the temporal store. Use only when the deployment intentionally treats persisted successful snapshots as the analytical serving source.
+
+## Temporal snapshot sync
+
+The repository exposes:
+
+```text
+GET /api/internal/sync/monday
+Authorization: Bearer <CRON_SECRET>
+```
+
+The endpoint:
+
+1. authenticates using a timing-safe bearer comparison;
+2. fetches the configured monday.com boards;
+3. normalizes source data;
+4. persists a successful point-in-time analytical snapshot;
+5. records sync metadata/watermarks;
+6. returns safe sync metadata.
+
+The repository does not assume a particular scheduler. A deployment can call this endpoint from Vercel Cron or another trusted scheduler, but scheduling configuration must be created and verified separately.
+
+Historical Change Intelligence is only as useful as the real snapshot cadence. Do not advertise “since last week” behavior in an environment that has not captured the relevant states.
+
+## API routes
 
 ### `GET /api/health`
 
-Returns service/configuration metadata. It checks configuration presence; it does not perform a live monday.com dependency probe.
+Returns configuration-safe service metadata. It must not expose tokens, database URLs, or provider keys.
 
 ### `POST /api/chat`
 
-This is the **only** Founder Copilot backend. Do not add `/api/copilot`.
+Canonical Founder Copilot backend. Requests are validated and bounded before typed analytical orchestration.
 
-Request shape:
+### `GET /api/internal/sync/monday`
 
-```json
-{"message":"How is our pipeline looking?"}
-```
+Authenticated temporal snapshot ingestion endpoint. It is not a public browser operation.
 
-The route applies:
+## monday.com boundary
 
-- strict JSON/schema validation;
-- message/request size limits;
-- request IDs;
-- rate limiting;
-- safe public errors;
-- canonical planner/dispatcher;
-- deterministic analytics before optional Gemini explanation.
-
-## monday.com behavior
-
-The server-side monday client:
+The source client:
 
 - imports `server-only`;
-- sends GraphQL queries only and rejects mutation text;
-- uses `cache: "no-store"`;
+- uses query-only GraphQL patterns;
+- rejects mutation text;
 - paginates board items;
-- uses bounded request timeout/retry behavior;
-- fetches Deals and Work Orders server-side;
-- does not embed assignment/business datasets in application code.
+- uses no-store source fetching;
+- does not embed an exported dataset as runtime truth.
 
-## Required release gate
+## Gemini boundary
 
-From the exact candidate SHA:
+Gemini is optional and does not own business arithmetic.
+
+Provider failure or invalid output must preserve authoritative deterministic analytical data. The provider can improve planning/interpretation but cannot create a new trusted metric merely through generated text.
+
+## Function-duration and upstream risk
+
+monday.com pagination, retries, and provider latency can increase function duration. Temporal sync adds database/network work as well.
+
+Measure realistic runtime duration in a preview with the intended board sizes and hosting plan. Do not mask upstream timeout problems by weakening validation or silently returning stale/fabricated results.
+
+## Release verification
+
+Before promoting a deployment, follow [RELEASE.md](RELEASE.md):
 
 ```bash
 npm ci
@@ -95,68 +181,8 @@ npm run lint
 npm run build
 ```
 
-All must succeed. `npm test` must include the Agent 5 evaluator and release-security regression suites; do not skip them.
+Then run route/API smoke against the deployed URL and verify live or temporal source behavior for the selected mode.
 
-The final candidate must also pass:
+## Rollback
 
-- tracked-repository secret scan;
-- desktop smoke at 1440×900;
-- mobile smoke at 390×844;
-- route checks for `/`, `/copilot`, `/pipeline`, `/operations`, `/leadership`, `/data-health`, `/api/health`;
-- `/api/chat` validation;
-- red-team retest.
-
-## Secret audit
-
-Search the tracked release tree for real values associated with:
-
-- `MONDAY_API_TOKEN`
-- `GEMINI_API_KEY`
-- `AI_API_KEY`
-- Bearer credentials
-- passwords / hardcoded secrets
-- `NEXT_PUBLIC_` references to server secrets
-
-Environment names and empty/example placeholders are acceptable. Real credentials are not.
-
-## Preview procedure for MASTER CHAT
-
-Only after independent approval of the exact application RC3 SHA:
-
-1. Record the exact approved SHA.
-2. Confirm `package-lock.json` is present and matches `package.json`.
-3. Run install/test/lint/build on that SHA.
-4. Configure the three required monday variables in Preview.
-5. Configure `GEMINI_API_KEY` only if Gemini explanation is desired; `AI_API_KEY` remains fallback-compatible.
-6. Create a Preview deployment.
-7. Run:
-
-```bash
-BASE_URL="https://<preview-host>" npm run smoke
-```
-
-8. Optionally validate safe chat behavior with:
-
-```bash
-BASE_URL="https://<preview-host>" SMOKE_CHAT=1 npm run smoke
-```
-
-9. Verify desktop/mobile views, structured Copilot output, Leadership Brief, Founder Attention, Data Health, and source provenance.
-10. Inspect runtime logs for timeouts, safe fallback behavior, and accidental secret exposure.
-11. Complete `docs/SUBMISSION_CHECKLIST.md`.
-12. Only then decide whether to promote/deploy production.
-
-## Function-duration risk
-
-monday.com pagination and retry behavior can increase server execution time under upstream latency or rate limiting. Before production approval, measure realistic Preview function durations with live monday configuration and confirm the selected hosting plan comfortably covers observed behavior. Do not hide upstream timeout problems in release tooling.
-
-## Rollback readiness
-
-Before production promotion, record:
-
-- approved git SHA;
-- validated Preview URL;
-- production deployment ID/URL once created;
-- previous known-good production deployment if one exists.
-
-If production smoke fails, roll back or halt release. Fix application behavior in the owning engineering branch rather than bypassing analytics/security gates.
+Record the deployed git SHA and immutable deployment identifier. If post-promotion smoke fails, restore the last known-good deployment or stop promotion. Database migrations and snapshot data should be treated as durable infrastructure; avoid destructive rollback actions unless they are explicitly designed and tested.
