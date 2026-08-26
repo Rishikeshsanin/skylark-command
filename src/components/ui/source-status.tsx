@@ -1,4 +1,5 @@
 import { formatDateTime, formatNumber } from "./formatters";
+import { FreshnessIndicator } from "./freshness-indicator";
 
 type SourceStatusProps = {
   provider?: string;
@@ -22,9 +23,14 @@ export function SourceStatus({
 
   return (
     <div className="source-status" title={boardLabel}>
-      <span className="source-status-dot" aria-hidden="true" />
       <div>
-        <strong>Live {provider}</strong>
+        <div className="source-status-heading">
+          <FreshnessIndicator
+            state={fetchedAt ? "live" : "unknown"}
+            label={fetchedAt ? "Live" : "Connected"}
+          />
+          <span>{provider}</span>
+        </div>
         <span>
           {recordsAnalyzed !== undefined
             ? `${formatNumber(recordsAnalyzed)} records analyzed`
