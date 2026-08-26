@@ -1,4 +1,4 @@
-import type { AgentResponse, ExecutiveExplanation } from "@/types";
+import type { AgentResponse, ChangeIntelligenceResult, ExecutiveExplanation } from "@/types";
 import { loadBusinessData, type BusinessDataSnapshot } from "@/lib/business-data";
 import { logEvent } from "@/lib/server/logger";
 import { PublicApiError } from "@/lib/server/errors";
@@ -115,6 +115,28 @@ function isPipelineScopeCall(call: BaseToolCall): call is PipelineScopeCall {
     call.tool === "getPipelineByStage";
 }
 
+function deterministicChangeCall(message: string): ToolCall | null {
+  if (!/\b(?:what changed|changed the most|change intelligence|changes?\s+(?:in|to|since))\b/i.test(message)) {
+    return null;
+  }
+  const focus = /\breceivables?|collections?\b/i.test(message)
+    ? "receivables"
+    : /\bcustomers?|clients?\b/i.test(message)
+      ? "customers"
+      : /\bpipeline|deals?|opportunit(?:y|ies)\b/i.test(message)
+        ? "pipeline"
+        : "all";
+  const lookbackDays = /\b(?:last|past)\s+week\b|\bsince\s+last\s+week\b/i.test(message) ? 7 : undefined;
+  return {
+    tool: "getChangeIntelligence",
+    args: {
+      focus,
+      limit: 50,
+      ...(lookbackDays ? { lookbackDays } : {}),
+    },
+  };
+}
+
 function isCustomerContributionFollowUp(message: string): boolean {
   return /\b(customers?|clients?)\b/i.test(message) &&
     /\b(behind|contribut(?:e|es|ion|ions)|driv(?:e|es|ing)|make up|account for)\b/i.test(message);
@@ -158,6 +180,8 @@ function thresholdContinuation(message: string, context?: ConversationContext): 
 }
 
 function deterministicContinuation(message: string, context?: ConversationContext): ToolCall | null {
+  const changeCall = deterministicChangeCall(message);
+  if (changeCall) return changeCall;
   const previous = baseCallFromContext(context);
   if (isCustomerContributionFollowUp(message) && context) {
     return customerContributionScopeFromContext(previous, context);
@@ -292,7 +316,7 @@ function clarificationWithTrace(
     return {
       ...routedResponse(
         "OUT_OF_SCOPE",
-        "I'm focused on Skylark's approved business intelligence rather than that request. I can help with pipeline, customers, Work Orders, billing, collections, receivables, and operating performance.",
+        "I'm focused on Skylark's approved business intelligence rather than that request. I can help with pipeline, customers, Work Orders, billing, collections, receivables, historical changes, and operating performance.",
         context,
       ),
       analysis: {
@@ -432,7 +456,6 @@ function followUpsFor(
         { label: "Compare with last quarter", query: "Compare this with last quarter." },
         { label: "Review receivables", query: "What are our receivables?" },
       ];
-
     case "getPipelineBySector":
       return base.args.sector
         ? [
@@ -447,7 +470,6 @@ function followUpsFor(
             { label: "Compare with last quarter", query: "Compare open pipeline with last quarter." },
             { label: "Review receivables", query: "What are our receivables?" },
           ];
-
     case "getPipelineByStage":
       return [
         { label: "Show customer contribution", query: "Which customers are behind those?" },
@@ -455,7 +477,6 @@ function followUpsFor(
         { label: "Compare with last quarter", query: "Compare this with last quarter." },
         { label: "Review receivables", query: "What are our receivables?" },
       ];
-
     case "getCustomerContribution": {
       const structured = customerContributionFollowUps(resultData);
       return structured.length > 0 ? structured : [
@@ -463,14 +484,19 @@ function followUpsFor(
         { label: "Review receivables", query: "What are our receivables?" },
       ];
     }
-
+    case "getChangeIntelligence":
+      return [
+        { label: "Pipeline changes", query: "What changed in pipeline?" },
+        { label: "Customer changes", query: "Which customers changed the most?" },
+        { label: "Receivables changes", query: "What changed in receivables?" },
+        { label: "Last week", query: "What changed since last week?" },
+      ];
     case "getCustomer360":
       return [
         { label: "Show receivables", query: "Show this customer's receivables." },
         { label: "Show active Work Orders", query: "Show this customer's Work Order health." },
         { label: "Review overall pipeline", query: "How is our pipeline looking?" },
       ];
-
     case "getReceivables":
       return [
         ...(base.args.customerKey || context.entity?.type === "client"
@@ -479,7 +505,6 @@ function followUpsFor(
         { label: "Review pipeline", query: "How is our pipeline looking?" },
         { label: "Break pipeline by sector", query: "Break the open pipeline down by sector." },
       ];
-
     case "getWorkOrderHealth":
       return [
         ...(base.args.customerKey || context.entity?.type === "client"
@@ -487,7 +512,6 @@ function followUpsFor(
           : [{ label: "Review receivables", query: "What are our receivables?" }]),
         { label: "Review pipeline", query: "How is our pipeline looking?" },
       ];
-
     case "getPeriodComparison":
       return [
         { label: "Show current pipeline", query: "How is our pipeline looking?" },
@@ -500,16 +524,13 @@ function followUpsFor(
 
 function resultHasNoMatch(call: ToolCall, execution: RegisteredToolExecution): boolean {
   const base = baseCallFor(call);
-
   if (base.tool === "getCustomer360") return execution.result.data === null;
-
   if (
     (base.tool === "getPipelineBySector" && base.args.sector) ||
     (base.tool === "getPipelineByStage" && base.args.stage)
   ) {
     return Array.isArray(execution.result.data) && execution.result.data.length === 0;
   }
-
   if (base.tool === "getCustomerContribution") {
     const data = execution.result.data;
     if (data && typeof data === "object" && !Array.isArray(data)) {
@@ -519,14 +540,12 @@ function resultHasNoMatch(call: ToolCall, execution: RegisteredToolExecution): b
       }
     }
   }
-
   if (
     (base.tool === "getReceivables" || base.tool === "getWorkOrderHealth") &&
     base.args.customerKey
   ) {
     return execution.evidence.workOrderCount === 0;
   }
-
   return false;
 }
 
@@ -538,7 +557,6 @@ function noMatchAfterExecution(
   plannerCaveats: string[],
 ): V2AgentResponse<unknown> | null {
   if (!resultHasNoMatch(call, execution)) return null;
-
   const base = baseCallFor(call);
   const entity =
     base.tool === "getCustomer360" ||
@@ -583,7 +601,7 @@ function noMatchAfterExecution(
 }
 
 function isMaterialPartialCaveat(caveat: string): boolean {
-  return /\b(?:unknown|missing|unmapped|excluded|partial|coverage|no usable|not available)\b/i.test(caveat);
+  return /\b(?:unknown|missing|unmapped|excluded|partial|coverage|no usable|not available|fewer than two|sparse)\b/i.test(caveat);
 }
 
 function responseStateFor(execution: RegisteredToolExecution): CopilotResponseState {
@@ -591,6 +609,63 @@ function responseStateFor(execution: RegisteredToolExecution): CopilotResponseSt
     execution.result.caveats.some(isMaterialPartialCaveat)
     ? "PARTIAL_DATA"
     : "SUCCESS";
+}
+
+function changeIntelligenceAnswer(data: ChangeIntelligenceResult, focus: string): string {
+  if (data.uniqueSnapshotCount < 2) {
+    return "There is not enough persisted successful history to compare yet, so I will not fabricate a historical baseline.";
+  }
+  const first = data.signals[0];
+  if (!first) {
+    return `No material ${focus === "all" ? "business" : focus} change signal was detected across the available successful snapshots.`;
+  }
+  return `The leading detected ${focus === "all" ? "business" : focus} change is: ${first.whatChanged}`;
+}
+
+function changeIntelligenceResponse(
+  call: Extract<ToolCall, { tool: "getChangeIntelligence" }>,
+  execution: RegisteredToolExecution,
+  context: ConversationContext | undefined,
+  planner: AnalysisTrustTrace["planner"],
+  plannerCaveats: string[],
+): V2AgentResponse<unknown> {
+  const data = execution.result.data as ChangeIntelligenceResult;
+  const nextContext = buildContext(
+    context,
+    call,
+    execution.snapshotId,
+    execution.semanticMetricIds,
+    execution.filters,
+    data,
+  );
+  return {
+    ok: true,
+    responseState: responseStateFor(execution),
+    answer: changeIntelligenceAnswer(data, call.args.focus),
+    data,
+    caveats: execution.result.caveats,
+    followUps: followUpsFor(call, nextContext, data).slice(0, 4),
+    source: execution.source,
+    analysis: {
+      planner,
+      toolsUsed: execution.toolsUsed,
+      semanticMetricIds: execution.semanticMetricIds,
+      filters: execution.filters,
+      sourceSnapshot: {
+        id: execution.snapshotId,
+        provider: "monday.com",
+        boardIds: execution.source.boardIds,
+        fetchedAt: execution.source.fetchedAt,
+      },
+      evidence: execution.evidence,
+      semanticTrust: execution.semanticTrust,
+      context: nextContext,
+      caveats: [
+        ...plannerCaveats,
+        "Change Intelligence uses a dedicated typed V2 response adapter; historical deltas, materiality, change scores, and movements come only from deterministic/statistical analytics, not the LLM.",
+      ],
+    },
+  };
 }
 
 export async function orchestrateFounderQuestionV2(
@@ -607,7 +682,6 @@ export async function orchestrateFounderQuestionV2(
   }
 
   const snapshot = await loadBusinessData();
-
   if (!continuation) {
     const entityNoMatch = noMatchWithTrace(message, snapshot, context);
     if (entityNoMatch) return entityNoMatch;
@@ -617,17 +691,12 @@ export async function orchestrateFounderQuestionV2(
     ? {
         proposal: { kind: "tool_call" as const, call: continuation, confidence: 1 },
         planner: "deterministic_fallback" as const,
-        caveats: ["Structured prior analytical scope was reused deterministically for this follow-up; no metric was recalculated by the LLM."],
+        caveats: ["Structured or deterministic analytical routing was used for this request; no metric was recalculated by the LLM."],
       }
     : await planWithGuardrails(message, snapshot, context, planningProvider);
 
   if (planned.proposal.kind !== "tool_call") {
-    return clarificationWithTrace(
-      planned.proposal,
-      planned.planner,
-      context,
-      planned.caveats,
-    );
+    return clarificationWithTrace(planned.proposal, planned.planner, context, planned.caveats);
   }
 
   const call = planned.proposal.call;
@@ -677,6 +746,10 @@ export async function orchestrateFounderQuestionV2(
     planned.caveats,
   );
   if (executedNoMatch) return executedNoMatch;
+
+  if (call.tool === "getChangeIntelligence") {
+    return changeIntelligenceResponse(call, execution, context, planned.planner, planned.caveats);
+  }
 
   const legacyPlan = legacyPlanForTool(call);
   let explanation: ExecutiveExplanation = buildDeterministicFallbackExplanation(

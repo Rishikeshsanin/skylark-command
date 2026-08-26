@@ -21,6 +21,7 @@ import {
   type ToolCall,
   type ToolEvidence,
 } from "./contracts";
+import { executeChangeIntelligenceTool } from "./change-intelligence-tool";
 import { executeCustomerContributionTool } from "./customer-contribution-tool";
 import { applyScenarioOverrides } from "./scenario-engine";
 
@@ -29,6 +30,7 @@ export const APPROVED_TOOL_IDS = [
   "getPipelineBySector",
   "getPipelineByStage",
   "getCustomerContribution",
+  "getChangeIntelligence",
   "getCustomer360",
   "getReceivables",
   "getWorkOrderHealth",
@@ -155,11 +157,13 @@ function evidenceFor(snapshot: BusinessDataSnapshot): ToolEvidence {
 function mergeEvidence(...items: ToolEvidence[]): ToolEvidence {
   const dealIds = new Set<string>();
   const workOrderIds = new Set<string>();
+  const sourceSnapshotIds = new Set<string>();
   let dealCount = 0;
   let workOrderCount = 0;
   for (const evidence of items) {
     for (const id of evidence.dealItemIds) dealIds.add(id);
     for (const id of evidence.workOrderItemIds) workOrderIds.add(id);
+    for (const id of evidence.sourceSnapshotIds ?? []) sourceSnapshotIds.add(id);
     dealCount = Math.max(dealCount, evidence.dealCount);
     workOrderCount = Math.max(workOrderCount, evidence.workOrderCount);
   }
@@ -168,6 +172,7 @@ function mergeEvidence(...items: ToolEvidence[]): ToolEvidence {
     workOrderItemIds: [...workOrderIds].slice(0, 50),
     dealCount,
     workOrderCount,
+    ...(sourceSnapshotIds.size ? { sourceSnapshotIds: [...sourceSnapshotIds].sort() } : {}),
   };
 }
 
@@ -287,6 +292,12 @@ function metricIdsFor(call: BaseToolCall): MetricId[] {
       return ["open_pipeline_value", "open_deal_count"];
     case "getCustomerContribution":
       return [call.args.metricId ?? (call.args.status === "Won" ? "known_won_value" : "open_pipeline_value")];
+    case "getChangeIntelligence":
+      return call.args.focus === "pipeline"
+        ? ["open_pipeline_value"]
+        : call.args.focus === "receivables"
+          ? ["receivables"]
+          : ["open_pipeline_value", "receivables"];
     case "getCustomer360":
       return ["open_pipeline_value", "receivables", "total_work_order_value", "active_work_order_count"];
     case "getReceivables":
@@ -325,6 +336,15 @@ function comparisonBaseCall(call: Extract<BaseToolCall, { tool: "getPeriodCompar
 async function executeBaseTool(call: BaseToolCall, baseline: BusinessDataSnapshot): Promise<RegisteredToolExecution> {
   const source = sourceForSnapshot(baseline);
   const snapshotId = snapshotIdFor(baseline);
+
+  if (call.tool === "getChangeIntelligence") {
+    const execution = await executeChangeIntelligenceTool(call, baseline);
+    return {
+      ...execution,
+      source: { ...source, fetchedAt: execution.sourceFetchedAt },
+      toolsUsed: [call.tool],
+    };
+  }
 
   if (call.tool === "getPeriodComparison") {
     const fromCall = comparisonBaseCall(call, call.args.from);
@@ -441,6 +461,9 @@ async function executeBaseTool(call: BaseToolCall, baseline: BusinessDataSnapsho
 
 export async function executeRegisteredTool(call: ToolCall, baseline: BusinessDataSnapshot): Promise<RegisteredToolExecution> {
   if (call.tool !== "runScenario") return executeBaseTool(call, baseline);
+  if (call.args.analysis.tool === "getChangeIntelligence") {
+    throw new Error("Historical Change Intelligence is observed source history and cannot be mutated through Scenario Lab.");
+  }
 
   const applied = applyScenarioOverrides(baseline, call.args.overrides);
   const baselineExecution = await executeBaseTool(call.args.analysis, baseline);
@@ -487,6 +510,7 @@ export function legacyPlanForTool(call: ToolCall): QueryPlan {
     case "getPipelineBySector": return { intent: "pipeline_by_sector", confidence: 1 };
     case "getPipelineByStage": return { intent: "pipeline_by_stage", confidence: 1 };
     case "getCustomerContribution": return { intent: "client_cross_board", confidence: 1 };
+    case "getChangeIntelligence": throw new Error("Change Intelligence uses the dedicated typed V2 response adapter and has no legacy V1 intent.");
     case "getCustomer360": return { intent: "client_cross_board", confidence: 1 };
     case "getReceivables": return { intent: "receivables", confidence: 1 };
     case "getWorkOrderHealth": return { intent: "work_order_health", confidence: 1 };

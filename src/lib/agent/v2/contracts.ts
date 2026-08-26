@@ -124,6 +124,14 @@ export const baseToolCallSchema = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("getPipelineBySector"), args: z.object({ ...commonPipelineArgs, stage: z.never().optional() }).strict() }).strict(),
   z.object({ tool: z.literal("getPipelineByStage"), args: z.object({ ...commonPipelineArgs, sector: z.never().optional() }).strict() }).strict(),
   z.object({ tool: z.literal("getCustomerContribution"), args: customerContributionArgsSchema }).strict(),
+  z.object({
+    tool: z.literal("getChangeIntelligence"),
+    args: z.object({
+      focus: z.enum(["all", "pipeline", "customers", "receivables"]).default("all"),
+      lookbackDays: z.number().int().min(1).max(365).optional(),
+      limit: z.number().int().min(2).max(50).default(50),
+    }).strict(),
+  }).strict(),
   z.object({ tool: z.literal("getCustomer360"), args: z.object({ customerKey: z.string().trim().min(1).max(120) }).strict() }).strict(),
   z.object({ tool: z.literal("getReceivables"), args: z.object({ customerKey: z.string().trim().min(1).max(120).optional() }).strict() }).strict(),
   z.object({ tool: z.literal("getWorkOrderHealth"), args: z.object({ customerKey: z.string().trim().min(1).max(120).optional() }).strict() }).strict(),
@@ -182,6 +190,7 @@ export interface ToolEvidence {
   workOrderItemIds: string[];
   dealCount: number;
   workOrderCount: number;
+  sourceSnapshotIds?: string[];
 }
 
 export interface SourceSnapshotTrace {
