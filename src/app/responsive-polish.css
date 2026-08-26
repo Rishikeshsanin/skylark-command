@@ -1,0 +1,46 @@
+/* Final responsive QA corrections only. Keep the integrated V2 design system intact. */
+
+/* Customer 360 uses six executive KPIs at laptop widths. Preserve the full
+   authoritative INR value instead of allowing the generic KPI ellipsis. */
+@media (min-width: 1101px) and (max-width: 1450px) {
+  .customer-360-layout .customer-money-value {
+    font-size: 14px;
+    letter-spacing: -0.045em;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
+@media (max-width: 600px) {
+  /* Customer links are frequent mobile navigation targets inside attention cards. */
+  .customer-link {
+    min-height: 44px;
+    padding-block: 10px;
+  }
+
+  /* Copilot example prompts are primary mobile actions. Keep them large enough
+     to tap without changing their content or desktop visual density. */
+  .copilot-example-chip {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Native details remain keyboard-native while gaining a deliberate touch target. */
+  .change-evidence > summary,
+  .copilot-supplied-details > summary,
+  .copilot-progressive-details > summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    padding-block: 8px;
+  }
+
+  /* The sticky composer may occupy the bottom of the viewport while the thread
+     remains independently scrollable. Reserve enough internal clearance so the
+     newest answer/evidence can always be scrolled fully above the composer. */
+  .copilot-scroll-thread {
+    padding-bottom: calc(132px + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(132px + env(safe-area-inset-bottom));
+  }
+}

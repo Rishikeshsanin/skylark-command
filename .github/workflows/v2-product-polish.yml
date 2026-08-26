@@ -1,0 +1,87 @@
+name: V2 Product Polish CI
+
+on:
+  push:
+    branches:
+      - v2/product-polish
+  pull_request:
+    branches:
+      - v2-integration
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Reproducible install
+        run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Documentation integrity
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const path = require("path");
+
+          function walk(directory) {
+            return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+              const fullPath = path.join(directory, entry.name);
+              return entry.isDirectory() ? walk(fullPath) : [fullPath];
+            });
+          }
+
+          const files = [
+            "README.md",
+            ...walk("docs").filter((file) => file.endsWith(".md")),
+          ];
+          const errors = [];
+
+          for (const file of files) {
+            const text = fs.readFileSync(file, "utf8");
+
+            for (const match of text.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) {
+              let target = match[1].trim();
+              if (!target || /^(https?:|mailto:|#)/.test(target)) continue;
+
+              target = decodeURIComponent(target.split("#")[0].split("?")[0]);
+              const resolved = path.resolve(path.dirname(file), target);
+              if (!fs.existsSync(resolved)) {
+                errors.push(`${file}: missing relative link target ${match[1]}`);
+              }
+            }
+
+            const mermaidStarts = (text.match(/```mermaid/g) || []).length;
+            const fenceCount = (text.match(/```/g) || []).length;
+            if (mermaidStarts > 0 && fenceCount < mermaidStarts * 2) {
+              errors.push(`${file}: possible unclosed Mermaid fence`);
+            }
+          }
+
+          if (errors.length) {
+            console.error(errors.join("\n"));
+            process.exit(1);
+          }
+          NODE
+
+          if grep -RniE '\b(assignment|evaluator|submission|deadline|RC3|hackathon-only)\b' README.md docs --include='*.md'; then
+            echo "Stale assignment/release-positioning language remains in README/docs."
+            exit 1
+          fi

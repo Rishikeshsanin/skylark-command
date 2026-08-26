@@ -1,164 +1,189 @@
 # Skylark Command
 
-### Founder-grade conversational BI over live monday.com data
+### Trust-native executive decision intelligence over live CRM and operational data
 
-Skylark Command turns live Deals and Work Orders into executive dashboards, a Founder Attention Feed, a Leadership Brief, and a conversational copilot. Business arithmetic stays in deterministic TypeScript; Gemini can explain the result, but it never owns the numbers.
+**Ask what changed. See why. Verify the evidence. Decide what happens next.**
 
-> **LIVE DEMO:** https://skylark-command.vercel.app
->
-> **Final integrated application:** [`0a0ee75522635c4259f9fefaf40d63e136fbea58`](https://github.com/Rishikeshsanin/skylark-command/commit/0a0ee75522635c4259f9fefaf40d63e136fbea58)
->
-> **Release state:** production deployment is live on Vercel. The final integrated release preserves deterministic BI, live read-only monday.com access, responsive executive dashboards, and Founder Copilot visual analytics.
+Skylark Command turns live monday.com Deals and Work Orders into deterministic business analytics, historical change intelligence, Customer 360, scenario analysis, and natural-language decision support. The defining constraint is simple: **AI may interpret an answer, but it does not own the business arithmetic.**
 
-## Executive overview
+[Live app](https://skylark-command.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [Trust model](docs/TRUST_MODEL.md) · [90-second demo](docs/DEMO.md) · [Technical case study](docs/CASE_STUDY.md)
 
-| Concern | Skylark Command approach |
+> The public deployment can lag the repository's V2 branch. Before demonstrating historical Change Intelligence or Scenario Lab, verify that the deployed SHA includes those capabilities and that temporal storage is configured. No mock history is used as a substitute.
+
+## Why it is different
+
+Most conversational BI demos optimize for fluent answers. Skylark Command optimizes for **defensible answers**.
+
+| Principle | Product behavior |
 | --- | --- |
-| Runtime source | Live, paginated monday.com Deals + Work Orders; no embedded assignment dataset |
-| Numeric truth | Deterministic normalization, joins, filters, rankings, and aggregations |
-| AI role | Optional Gemini narration over already-computed structured facts |
-| Executive experience | Overview, Pipeline, Operations, Leadership Brief, Data Health, and Founder Copilot |
-| Incomplete data | Nulls remain unknown; known-only totals disclose their coverage |
-| Safety boundary | Server-only secrets, query-only monday access, validation, rate limiting, request IDs, and safe errors |
+| **Deterministic truth** | TypeScript owns normalization, filters, joins, rankings, deltas, and business arithmetic. |
+| **Explicit semantics** | A versioned semantic registry defines metrics, dimensions, allowed joins, and canonical questions. |
+| **Evidence before confidence** | Answers can carry source snapshots, record IDs, coverage, lineage, caveats, and evidence-quality classifications. |
+| **Time is first-class** | Persisted point-in-time snapshots support change detection without reconstructing or fabricating history. |
+| **AI is bounded** | Gemini can propose typed analytical tools and explain computed results; schema, grounding, and allowlists constrain execution. |
+| **Unknown stays unknown** | Missing values remain `null`; known-only totals disclose coverage rather than treating missing data as zero. |
+| **Scenarios are isolated** | What-if overrides run against cloned snapshots and never mutate monday.com source records. |
+| **Workspace access is server-owned** | Public demo mode is read-only; explicit workspace mode validates managed identity and persisted membership/RBAC before analytics. |
+| **Operations are observable without logging business content** | Request IDs, structured JSON telemetry, safe error taxonomy, sync/tool/provider signals, protected diagnostics, alerts, and fixed Copilot evaluations are implemented in-process. |
 
-What makes the submission intentional:
+## What it can do
 
-- **Deterministic numbers, AI explanation.** Pipeline, won value, receivables, rankings, and joins never depend on model arithmetic.
-- **Honest coverage.** Missing monetary values are excluded from known-only sums and surfaced as unknown, not silently converted to zero.
-- **Live runtime data.** The server queries monday.com on demand with `cache: "no-store"` and pagination.
-- **Cross-board intelligence.** Exact normalized client keys connect commercial Deals with Work Order execution and collections exposure.
-- **Founder workflows.** The Attention Feed and Leadership Brief prioritize decisions rather than only displaying charts.
-- **Read-only and server-side by design.** The monday client rejects mutations, and provider credentials never enter the browser bundle.
+### Founder Copilot 2.0
+
+Ask business questions in natural language, continue with structured follow-ups, and receive answers backed by approved analytical tools. The Copilot supports pipeline, sector/stage analysis, customer contribution, Customer 360, receivables, Work Order health, period comparisons, Change Intelligence, and Scenario Lab.
+
+### Change Detective
+
+Compare available point-in-time snapshots to answer questions such as `What changed since last week?`, `What changed in pipeline?`, or `Which customers changed the most?`. When durable history is unavailable or too sparse, the product says so instead of inventing a comparison baseline.
+
+### Customer 360
+
+Join commercial and operational evidence using an exact normalized client key. Inspect pipeline exposure, won-value evidence, Work Orders, billing/collections context, receivables, execution risk, and contribution without fuzzy identity matching.
+
+### Scenario Lab
+
+Run bounded what-if analysis such as moving a Deal close period, changing an outcome, applying a receivable payment, delaying a Work Order, or resolving an operational item. Every scenario follows:
+
+`immutable baseline + validated overrides → cloned hypothetical snapshot → same deterministic analytics → BASELINE / SCENARIO / DELTA`
+
+### Evidence-first executive UI
+
+Overview, Pipeline, Operations, Leadership, Data Health, Change Detective, Customer 360, and Founder Copilot use responsive visualizations, freshness/coverage signals, explicit caveats, and evidence surfaces rather than hiding data quality behind prose.
+
+## Why the answers are trustworthy
+
+Skylark separates three classes of output:
+
+- **FACT** — deterministic analytics computed from configured source records and persisted snapshots.
+- **ESTIMATE** — explicitly labeled statistical techniques, such as materiality thresholds derived from observed data distributions.
+- **INTERPRETATION** — optional LLM wording over an already-computed analytical result.
+
+The LLM is not allowed to silently promote an interpretation into a fact. See the full [Trust Model](docs/TRUST_MODEL.md).
+
+```mermaid
+flowchart LR
+    U[Executive question] --> P[Typed planner]
+    P --> G{Schema + grounding + allowlist}
+    G -->|approved| T[Deterministic analytical tool]
+    G -->|invalid / unsupported| C[Clarify or deterministic fallback]
+    S[Live or persisted source snapshot] --> T
+    T --> A[Authoritative structured answer]
+    T --> E[Lineage + evidence quality]
+    A --> L[Optional LLM interpretation]
+    E --> UI[Evidence-first UI]
+    L --> UI
+    A --> UI
+```
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    M["LIVE monday.com — query only"] --> N["Server fetch + normalization"]
-    Q["Founder question"] --> P["Bounded planner"]
-    N --> A["Deterministic TypeScript analytics"]
-    P --> A
-    A --> T["AgentResponse.data — numeric truth"]
-    A --> G["Optional Gemini explanation"]
-    T --> U["Founder Copilot + dashboards"]
-    G --> U
+    M[monday.com GraphQL<br/>read-only] --> N[Normalization + quality flags]
+    N --> L[Live analytical snapshot]
+    N --> SYNC[Authenticated temporal sync]
+    SYNC --> PG[(PostgreSQL point-in-time snapshots)]
+    L --> A[Deterministic analytics]
+    PG --> H[Historical snapshot provider]
+    H --> CI[Change Intelligence]
+    A --> SEM[Semantic registry + lineage]
+    CI --> SEM
+    SEM --> TOOLS[Typed analytical tool registry]
+    ID[Managed auth + workspace membership/RBAC] --> TOOLS
+    TOOLS --> C[Founder Copilot 2.0]
+    TOOLS --> SC[Scenario Lab]
+    TOOLS --> UI[Executive product surfaces]
+    C --> UI
+    SC --> UI
+    OBS[Request context + structured telemetry] -. observes .-> C
+    OBS -. observes .-> SYNC
 ```
 
-The bounded planner selects a supported deterministic analysis. `AgentResponse.data` remains authoritative; the explanation provider receives a constrained representation of those facts and cannot replace the structured result.
+Detailed component boundaries, temporal flow, workspace isolation, observability, and failure behavior are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Features
+## Product surfaces
 
-| Area | Capabilities |
+| Route | Purpose |
 | --- | --- |
-| Pipeline | Open pipeline, known won value, stage/sector breakdowns, risky deals, and missing-value coverage |
-| Periods | Explicit-quarter, current-quarter, and latest-available-period behavior without fake zero performance |
-| Operations | Work Order execution health, billing, collections, receivables, delays, and incomplete-field handling |
-| Customers | Exact cross-board matching and four explicit deterministic customer-ranking definitions |
-| Founder Attention | Commercial, delivery, receivables, stale-deal, concentration, and data-quality signals |
-| Leadership Brief | Deterministic executive snapshot with priorities and caveats |
-| Data Health | Missing, malformed, unmapped, and potentially stale source-data findings |
-| Founder Copilot | Structured answers, clarification flows, source provenance, provider fallback, and safe errors |
+| `/` | Executive overview and Founder Attention |
+| `/changes` | Change Detective over available historical snapshots |
+| `/copilot` | Founder Copilot 2.0, structured answers, trust trace, and Scenario Lab |
+| `/customers/[clientKey]` | Customer 360 |
+| `/pipeline` | Pipeline, stage/sector and risk intelligence |
+| `/operations` | Work Order, billing, collections, and receivables health |
+| `/leadership` | Deterministic Leadership Brief |
+| `/data-health` | Missing, malformed, unmapped, stale, and coverage evidence |
+| `/api/chat` | Canonical Copilot API with public-demo/workspace authorization |
+| `/api/health` | Configuration-safe health metadata |
+| `/api/internal/sync/monday` | `CRON_SECRET`-protected temporal snapshot sync endpoint |
+| `/api/internal/diagnostics` | `CRON_SECRET`-protected operational diagnostics |
 
-## Live acceptance baseline
+## Tech stack
 
-These values are the configured-live verification baseline for the two monday.com boards. They are **acceptance evidence, not hardcoded runtime data**.
+| Layer | Technology |
+| --- | --- |
+| Web application | Next.js 16 App Router, React 19, TypeScript 5.9 |
+| Validation | Zod |
+| Source integration | monday.com GraphQL over server-side `fetch` |
+| Temporal storage | PostgreSQL via `postgres` |
+| Managed identity validation | Supabase Auth access-token validation with persisted server-side workspace membership/RBAC |
+| AI interpretation/planning | Google Gemini, optional and server-only |
+| Styling | Tailwind CSS 4 plus application CSS |
+| Tests | Node test runner via `tsx`, Vitest, fixed Copilot evaluation suite |
+| Hosting target | Vercel / Node.js 24.x runtime |
 
-| Metric | Expected live value |
-| --- | ---: |
-| Deals | 346 total |
-| Open deals | 49 |
-| Won deals | 165 |
-| Known open pipeline | 688152293.17 INR |
-| Known won value | 95038938.98 INR |
-| Won-value coverage | 64 known-value deals; 101 unknown-value deals |
-| Work Orders | 176 |
-| Known receivables | 36291748.87 INR |
-| Unique Work Order client keys | 51 |
-| Exact cross-board matches | 50 |
-| Unmatched client keys | 1 — `COMPANY042` |
+No technology is listed here unless it exists in the repository or runtime contract.
 
-Known open and won monetary values exclude records whose monetary value is missing. In particular, **known won value is not presented as full historical revenue**.
+## Data and trust pipeline
 
-## Data-quality philosophy
-
-- Missing or malformed values normalize to `null`, with quality evidence where relevant.
-- Known-only monetary sums never impute an average or treat unknown as zero.
-- Record counts and value-coverage counts stay visible beside material monetary answers.
-- Cross-board presence means an exact intersection of unique normalized client keys—never fuzzy name matching.
-- A requested current quarter with no usable records remains a no-data result and surfaces latest-available context when possible.
-- Time-dependent analytics receive an explicit analysis date so results are deterministic and testable.
-
-## AI trust boundary
-
-The optional provider uses **`gemini-2.5-flash-lite`** for executive explanation only.
-
-- Gemini never calculates pipeline, revenue, won value, receivables, counts, ranks, or percentages.
-- Structured deterministic `AgentResponse.data` is the numeric source of truth rendered by the UI.
-- Generated prose is schema-validated with a numeric-prose guard; model text containing digits is rejected.
-- Provider absence, timeout, rate limit, malformed output, or trust-guard failure triggers a deterministic explanation fallback while preserving the analytical result.
-- User text and monday-sourced text are serialized as untrusted data and separated from system instructions.
-
-Key precedence is `GEMINI_API_KEY`, then the backward-compatible `AI_API_KEY`. Both remain optional and server-only.
+1. **Fetch** configured monday.com boards server-side using paginated, query-only GraphQL.
+2. **Normalize** source cells into typed Deals and Work Orders; malformed or missing values remain explicit.
+3. **Authorize** public read-only demo access or an explicit authenticated workspace using server-resolved membership/RBAC.
+4. **Serve** either live data or a successful workspace-scoped temporal snapshot according to `SKYLARK_DATA_MODE`.
+5. **Persist** successful point-in-time snapshots when temporal sync is configured.
+6. **Calculate** business metrics in deterministic analytics functions.
+7. **Describe** those metrics through the semantic registry instead of redefining arithmetic in the AI layer.
+8. **Execute** only typed, allowlisted analytical tools.
+9. **Attach** lineage, source references, filters, evidence coverage, and caveats.
+10. **Interpret** optionally with Gemini after authoritative data exists.
+11. **Observe** request/tool/provider/sync outcomes with structured redacted telemetry rather than prompt or raw-record logging.
+12. **Render** the structured result and its trust evidence in the UI.
 
 ## Security boundaries
 
-- Server-only monday.com and Gemini credentials; no secret uses a `NEXT_PUBLIC_` prefix
-- GraphQL query helpers only, with explicit mutation rejection
-- Strict JSON schema and bounded input for `POST /api/chat`
-- Rate limiting, request IDs, timeouts, safe public error envelopes, and no-store API responses
-- Content Security Policy and additional response security headers
-- Prompt-injection and untrusted-source-data separation
-- Canonical `POST /api/chat`; no competing production chat backend
+- Server-only monday.com, database, cron, and Gemini credentials.
+- Managed-auth validation for explicit workspace mode; canonical roles come from persisted `workspace_members`, not client/JWT role claims.
+- Public demo mode remains accessible and read-only; authenticated workspace requests are isolated and fail closed when workspace data serving is not configured.
+- `VIEWER` can run authorized analytics but is denied Scenario Lab before scenario execution; higher permissions are server-owned.
+- monday.com client rejects mutation documents and uses query-only access patterns.
+- Strict request schemas, bounded body/message sizes, request IDs, safe public errors, and timeouts.
+- Prompt-injection defenses separate user/source data from system instructions.
+- LLM tool proposals must pass Zod validation, allowlist checks, source-entity grounding, and context grounding.
+- Provider failure degrades interpretation, not deterministic analytics.
+- Scenario analysis operates on cloned data and has no source-write path.
+- Structured telemetry redacts configured secrets and never logs full prompts, chain-of-thought, or raw source records.
+- Internal sync and diagnostics routes are protected by timing-safe `CRON_SECRET` bearer validation.
+- Current rate limiting is process-local; distributed enforcement remains a production-hardening item.
 
-The evaluator-facing hosted preview intentionally prioritizes frictionless reviewer access. Production hardening would add organization SSO/RBAC, deployment-level access controls, and distributed rate limiting; the trade-off is recorded in the [Decision Log](docs/DECISION_LOG.md).
+See [docs/TRUST_MODEL.md](docs/TRUST_MODEL.md) and [docs/RELEASE.md](docs/RELEASE.md).
 
-## Evaluator demo
+## Testing and quality gates
 
-Use the [five-minute evaluator script](docs/EVALUATOR_DEMO_SCRIPT.md), or ask:
-
-- `How is our pipeline looking?`
-- `Which sector has the largest open opportunity?`
-- `Who are our best customers?`
-- `What is our won value?`
-- `What are our receivables?`
-- `Which customers appear in both boards?`
-- `How are we doing this quarter?`
-- `Which projects need leadership attention?`
-- `What data should I not trust?`
-- `Prepare a leadership brief.`
-
-“Who are our best customers?” intentionally requires a definition rather than inventing one:
-
-1. Highest won value
-2. Largest active pipeline
-3. Best project execution
-4. Combined commercial + operational importance
-
-Each selection dispatches to a deterministic ranking function.
-
-## Testing and QA
-
-Final release validation includes clean install/audit, deterministic analytics tests, component regressions, lint, production build, responsive browser smoke, API validation, and committed-secret scanning. The final visual passes added focused coverage for dashboard presentation, Copilot visual analytics, clarification behavior, and safe follow-up handling.
-
-Run locally from the exact checked-out release state:
+The repository uses separate deterministic analytics, temporal/history, migration-hardening, workspace/RBAC, Change Intelligence, Customer 360, customer-contribution, semantic-layer, Copilot, evaluation, injection/security, observability, visualization, and server-reliability tests. Rather than pinning a test count that will become stale, the release gate is defined by commands:
 
 ```bash
 npm ci
+npm run eval:copilot
 npm test
 npm run lint
 npm run build
 ```
 
-For a reachable candidate:
-
-```bash
-BASE_URL="https://your-preview.example" npm run smoke
-BASE_URL="https://your-preview.example" SMOKE_CHAT=1 npm run smoke
-```
+A release candidate should also pass route/API smoke checks, tracked-secret review, and a live-source sanity check where credentials are available. See [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Local setup
 
-Requires Node.js 20.9+.
+Requires Node.js 24.x, matching the repository runtime contract.
 
 ```bash
 git clone https://github.com/Rishikeshsanin/skylark-command.git
@@ -170,108 +195,82 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## Environment variables
-
-| Variable | Requirement | Purpose |
-| --- | --- | --- |
-| `MONDAY_API_TOKEN` | Required, secret | Server-side monday.com read access |
-| `MONDAY_DEALS_BOARD_ID` | Required, non-secret | Deals board: `5030844099` |
-| `MONDAY_WORK_ORDERS_BOARD_ID` | Required, non-secret | Work Orders board: `5030844103` |
-| `GEMINI_API_KEY` | Optional, secret | Preferred Gemini explanation key |
-| `AI_API_KEY` | Optional, secret | Backward-compatible fallback when `GEMINI_API_KEY` is unset |
-
-Configure `.env.local` without committing it:
+Minimal live-data configuration:
 
 ```dotenv
 MONDAY_API_TOKEN=<server-side token>
-MONDAY_DEALS_BOARD_ID=5030844099
-MONDAY_WORK_ORDERS_BOARD_ID=5030844103
-
-# Optional explanation provider
-GEMINI_API_KEY=<server-side key>
-
-# Optional backward-compatible fallback when GEMINI_API_KEY is unset
-AI_API_KEY=<server-side key>
+MONDAY_DEALS_BOARD_ID=<deals board id>
+MONDAY_WORK_ORDERS_BOARD_ID=<work-orders board id>
 ```
 
-The monday board IDs are non-secret configuration; tokens and provider keys are secrets.
+Temporal history is optional for the public demo. Explicit authenticated workspace analytics require isolated temporal data serving. When temporal mode is enabled, configure `DATABASE_URL`, `CRON_SECRET`, and the data-mode settings; managed identity validation uses `SUPABASE_URL` plus `SUPABASE_PUBLISHABLE_KEY`. See [Deployment](docs/DEPLOYMENT.md).
 
-## Routes
+## Production-hardening status
 
-| Route | Purpose |
-| --- | --- |
-| `/` | Executive overview and Founder Attention Feed |
-| `/copilot` | Founder Copilot |
-| `/pipeline` | Pipeline intelligence |
-| `/operations` | Work Order, billing, collections, and receivables health |
-| `/leadership` | Leadership Brief |
-| `/data-health` | Deterministic data-quality findings |
-| `/api/health` | Service and configuration metadata |
-| `/api/chat` | Canonical Founder Copilot API |
+Implemented in code on V2:
 
-## Deployment
+- temporal migration checksum/drift validation, bounded PostgreSQL connections, active-sync enforcement, abandoned-sync recovery, last-known-good serving, and truthful freshness;
+- server-side managed-auth foundation, workspaces, memberships, `OWNER` / `ADMIN` / `ANALYST` / `VIEWER` RBAC, public-demo/authenticated-workspace modes, connector credential-reference model, and audit foundation;
+- structured logging, AsyncLocalStorage request context, request IDs, latency/tool/provider/sync telemetry, error taxonomy, secret redaction, protected diagnostics, alert conditions, and fixed Copilot evaluation tooling;
+- deterministic responsive INR presentation, mobile interaction targets, focus/scroll behavior, and reduced-motion handling.
 
-Production is deployed at **https://skylark-command.vercel.app**. See [Deployment Readiness](docs/DEPLOYMENT.md) and the [Final Submission Runbook](docs/SUBMISSION_CHECKLIST.md) for environment and verification details. `GET /api/health` verifies configuration presence; the configured-live baseline should also be checked in the product.
+Not claimed as shipped:
 
-## Decision Log
+- full frontend login/account-management UI;
+- workspace-specific secret resolution/sync and production tenant onboarding;
+- a production migration execution or activated production cron;
+- real historical accumulation in an environment that has not yet captured multiple successful snapshots.
 
-The concise [Decision Log](docs/DECISION_LOG.md) records the trust and release trade-offs behind deterministic BI, live/read-only monday access, explanation-only Gemini, known-only totals, explicit clarification, exact client matching, period handling, testable analysis dates, fallback behavior, and evaluator-accessible hosting.
+An isolated real staging database migration validation is still required before production temporal rollout.
+
+## Demo
+
+The recommended recruiter/product walkthrough is intentionally short:
+
+1. Open Overview and explain the trust-native thesis.
+2. Ask `What changed since last week?`.
+3. Open the answer evidence/lineage.
+4. Inspect one customer in Customer 360.
+5. Ask which customers contributed to a result.
+6. Run a bounded scenario.
+7. Close with Data Health and FACT / ESTIMATE / INTERPRETATION.
+
+If the deployed environment does not have enough historical snapshots, use the documented alternate path instead of pretending that history exists. See [docs/DEMO.md](docs/DEMO.md).
 
 ## Screenshots
 
-Real production screenshots follow the capture and naming plan in [`docs/screenshots/README.md`](docs/screenshots/README.md). The live demo above is the authoritative final product experience.
+The existing `Screenshots/` directory is preserved as a real production reference from the earlier public deployment. It is **not** labeled as proof of every V2 capability.
 
-## Project map
+A V2 gallery is intentionally gated on real V2 captures. The exact capture checklist and filenames live in [docs/screenshots/README.md](docs/screenshots/README.md).
 
-| Path | Responsibility |
-| --- | --- |
-| `src/lib/monday` | Server-only, paginated, query-only monday client |
-| `src/lib/normalization` | Typed parsing, normalization, and quality evidence |
-| `src/lib/analytics` | Deterministic BI, rankings, periods, joins, attention, and briefs |
-| `src/lib/agent` | Bounded planning, dispatch, response composition, Gemini, and fallback |
-| `src/app/api` | Health and canonical chat routes |
-| `src/components` | Executive dashboards and structured Copilot rendering |
-| `tests` and `*.test.ts` | Deterministic, security, evaluator, and presentation regressions |
-| `docs` | Architecture decisions, QA evidence, deployment, demo, and submission runbook |
+## Documentation
 
-## Release documents
-
+- [Architecture](docs/ARCHITECTURE.md)
+- [Trust Model](docs/TRUST_MODEL.md)
+- [Demo Script](docs/DEMO.md)
+- [Technical Case Study](docs/CASE_STUDY.md)
+- [Data Contracts](docs/DATA_CONTRACTS.md)
+- [Semantic Layer](docs/SEMANTIC_LAYER.md)
+- [Copilot & Scenario Lab](docs/V2_COPILOT_SCENARIO.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Release & Quality Gates](docs/RELEASE.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Portfolio / Resume Notes](docs/PORTFOLIO.md)
 - [Decision Log](docs/DECISION_LOG.md)
-- [Evaluator Demo Script](docs/EVALUATOR_DEMO_SCRIPT.md)
-- [Release QA Status](docs/RELEASE_QA.md)
-- [Deployment Readiness](docs/DEPLOYMENT.md)
-- [Final Submission Runbook](docs/SUBMISSION_CHECKLIST.md)
+- [Observability](docs/OBSERVABILITY.md)
+- [Auth / RBAC](docs/V2_AUTH_RBAC.md)
+- [Temporal Production Readiness](docs/TEMPORAL_PRODUCTION_READINESS.md)
+
+## Roadmap snapshot
+
+**Shipped in code:** deterministic executive analytics, live monday.com integration, hardened temporal snapshot infrastructure, Change Intelligence, Customer 360, semantic lineage/evidence, typed Copilot tools, Scenario Lab, Data Health, responsive visualizations, provider fallback, server-side workspace/RBAC foundation, and structured observability/evaluation tooling.
+
+**Next:** isolated real staging migration validation, operationalize scheduled snapshot capture without enabling production cron prematurely, workspace-specific secret resolution/onboarding, distributed rate limiting, stronger evidence navigation, and a clean V2 screenshot/demo set.
+
+**Future / research:** pipeline conversion, collections risk, and delivery-risk prediction **only after sufficient point-in-time historical data exists for defensible training and evaluation**. No predictive ML model is claimed as shipped today.
 
 ---
 
-## Product Screenshots
+### Product philosophy
 
-Final production captures, preserved in their original capture order.
-
-<p align="center">
-  <img src="Screenshots/Screenshot%20(57).png" alt="Skylark Command production screenshot 1" width="100%" />
-</p>
-
-<p align="center">
-  <img src="Screenshots/Screenshot%20(58).png" alt="Skylark Command production screenshot 2" width="100%" />
-</p>
-
-<p align="center">
-  <img src="Screenshots/Screenshot%20(59).png" alt="Skylark Command production screenshot 3" width="100%" />
-</p>
-
-<p align="center">
-  <img src="Screenshots/Screenshot%20(60).png" alt="Skylark Command production screenshot 4" width="100%" />
-</p>
-
-<p align="center">
-  <img src="Screenshots/Screenshot%20(61).png" alt="Skylark Command production screenshot 5" width="100%" />
-</p>
-
-<p align="center">
-  <img src="Screenshots/Screenshot%20(62).png" alt="Skylark Command production screenshot 6" width="100%" />
-</p>
-
-<p align="center">
-  <img src="Screenshots/Screenshot%20(63).png" alt="Skylark Command production screenshot 7" width="100%" />
-</p>
+> **Ask what changed. See why. Verify the evidence. Decide what happens next.**

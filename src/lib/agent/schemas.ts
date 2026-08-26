@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { conversationContextSchema } from "./v2/contracts";
 
 export const MAX_MESSAGE_CHARS = 2_000;
 export const MAX_REQUEST_BYTES = 8_192;
@@ -11,6 +12,7 @@ export const chatRequestSchema = z
       .trim()
       .min(1, "Message is required")
       .max(MAX_MESSAGE_CHARS, "Message is too long"),
+    context: conversationContextSchema.optional(),
   })
   .strict();
 

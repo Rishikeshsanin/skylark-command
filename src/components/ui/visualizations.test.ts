@@ -43,7 +43,7 @@ describe("executive visualization primitives", () => {
     const html = renderToStaticMarkup(createElement(DistributionBars, {
       ariaLabel: "Known pipeline by sector",
       items: [
-        { label: "Tender", value: 532_000_000, secondary: "₹53.2Cr", detail: "₹53,20,00,000 across 4 open opportunities" },
+        { label: "Tender", value: 532_000_000, secondary: "₹53.2Cr", detail: "₹53,20,00,000 across 4 open opportunities", rank: 1, tone: "info" },
         { label: "Mining", value: 29_000_000, secondary: "₹2.9Cr", detail: "₹2,90,00,000 across 9 open opportunities" },
       ],
     }));
@@ -51,6 +51,9 @@ describe("executive visualization primitives", () => {
     expect(html).toContain('role="list"');
     expect(html).toContain('aria-label="Known pipeline by sector"');
     expect(html).toContain("₹53,20,00,000 across 4 open opportunities");
+    expect(html).toContain("Rank 1, Tender");
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain("chart-info");
     expect(html).toContain('aria-hidden="true"');
   });
 

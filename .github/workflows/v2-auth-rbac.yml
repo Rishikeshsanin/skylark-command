@@ -1,0 +1,70 @@
+name: V2 Auth RBAC
+
+on:
+  push:
+    branches:
+      - v2/auth-rbac
+
+permissions:
+  contents: read
+
+jobs:
+  validate-auth-rbac:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact lockfile dependencies
+        run: npm ci
+
+      - name: Migration numbering guard
+        shell: bash
+        run: |
+          if git grep -nE '002_identity_[[:alnum:]_]*workspace_rbac' -- .; then
+            echo 'Legacy auth/RBAC migration 002 reference remains.' >&2
+            exit 1
+          fi
+          test -f src/lib/data-platform/migrations/001_temporal_intelligence.sql
+          test -f src/lib/data-platform/migrations/003_identity_workspace_rbac.sql
+          node <<'NODE'
+          const intendedIntegratedOrder = [
+            '001_temporal_intelligence',
+            '002_temporal_production_hardening',
+            '003_identity_workspace_rbac',
+          ];
+          const sorted = [...intendedIntegratedOrder].sort();
+          if (JSON.stringify(sorted) !== JSON.stringify(intendedIntegratedOrder)) {
+            throw new Error('Canonical integration migration order is invalid.');
+          }
+          NODE
+          echo 'Auth/RBAC migration numbering guard passed.'
+
+      - name: Security tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Server/client secret boundary scan
+        shell: bash
+        run: |
+          if git grep -nE 'sb_secret_[A-Za-z0-9._-]{12,}' -- ':!docs/**'; then
+            echo 'A Supabase secret key pattern is committed outside documentation.' >&2
+            exit 1
+          fi
+          if git grep -n 'SUPABASE_SECRET_KEY' -- 'src/**' '.env.example'; then
+            echo 'Supabase secret/service credentials must not be part of the application auth boundary.' >&2
+            exit 1
+          fi
+          echo 'Auth/RBAC secret boundary scan passed.'

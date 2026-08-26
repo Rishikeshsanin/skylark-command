@@ -1,12 +1,18 @@
 import { loadBusinessData } from "@/lib/business-data";
 import {
+  loadAvailableChangeSnapshots,
+  type HistoricalSnapshotProvider,
+} from "@/lib/change-history";
+import {
   buildClientIntelligence,
+  buildCustomer360,
   buildDataQualityReport,
   buildLeadershipBriefData,
   calculatePipelineMetrics,
   calculateSectorMetrics,
   calculateWorkOrderHealth,
   dealCloseQuarterMetrics,
+  detectChangeIntelligence,
   findRiskyDeals,
   getFounderAttentionFeed,
   largestDeals,
@@ -68,4 +74,41 @@ export async function loadDataHealthViewData() {
   const snapshot = await loadBusinessData();
   const asOfDate = analysisDate();
   return { snapshot, report: buildDataQualityReport(snapshot.deals, snapshot.workOrders, snapshot.normalizationIssues, asOfDate) };
+}
+
+export async function loadChangeIntelligenceViewData(
+  provider?: HistoricalSnapshotProvider,
+) {
+  const snapshots = await loadAvailableChangeSnapshots(provider);
+  return {
+    snapshots,
+    latestSnapshot: snapshots.at(-1) ?? null,
+    changes: detectChangeIntelligence(snapshots),
+  };
+}
+
+export async function loadCustomer360ViewData(
+  normalizedClientKey: string,
+  provider?: HistoricalSnapshotProvider,
+) {
+  const snapshots = await loadAvailableChangeSnapshots(provider);
+  const latestSnapshot = snapshots.at(-1);
+  if (!latestSnapshot) {
+    return { snapshots, latestSnapshot: null, changes: detectChangeIntelligence([]), customer: null };
+  }
+  const asOfDate = latestSnapshot.capturedAt.slice(0, 10);
+  const changes = detectChangeIntelligence(snapshots);
+  const attention = getFounderAttentionFeed(
+    latestSnapshot.deals,
+    latestSnapshot.workOrders,
+    asOfDate,
+  );
+  const customer = buildCustomer360(
+    normalizedClientKey,
+    latestSnapshot,
+    snapshots,
+    attention,
+    changes.signals,
+  );
+  return { snapshots, latestSnapshot, changes, customer };
 }

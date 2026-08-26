@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type {
   ClientIntelligence,
@@ -16,6 +17,27 @@ type FounderAttentionProps = {
   currency?: string;
 };
 
+function formatCompactInr(value: number): string {
+  const absolute = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  const unit = absolute >= 10_000_000
+    ? { divisor: 10_000_000, suffix: "Cr" }
+    : absolute >= 100_000
+      ? { divisor: 100_000, suffix: "L" }
+      : absolute >= 1_000
+        ? { divisor: 1_000, suffix: "K" }
+        : { divisor: 1, suffix: "" };
+  const rounded = Math.round((absolute / unit.divisor + Number.EPSILON) * 10) / 10;
+  const display = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${sign}₹${display}${unit.suffix}`;
+}
+
+function formatHydrationSafeAmount(value: number, currencyCode?: string): string {
+  return currencyCode?.trim().toUpperCase() === "INR"
+    ? formatCompactInr(value)
+    : formatAmount(value, currencyCode);
+}
+
 function formatEvidenceValue(
   key: string,
   value: FounderAttentionItem["evidenceMetrics"][string],
@@ -25,7 +47,7 @@ function formatEvidenceValue(
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string") return value;
   const monetary = /value|amount|receivable|pipeline|exposure/i.test(key);
-  return monetary ? formatAmount(value, currencyCode) : formatNumber(value, 1);
+  return monetary ? formatHydrationSafeAmount(value, currencyCode) : formatNumber(value, 1);
 }
 
 function labelize(key: string) {
@@ -33,6 +55,14 @@ function labelize(key: string) {
     .replace(/([A-Z])/g, " $1")
     .replace(/_/g, " ")
     .replace(/^./, (char) => char.toUpperCase());
+}
+
+function CustomerLink({ client }: { client: string }) {
+  return (
+    <Link className="customer-link" href={`/customers/${encodeURIComponent(client)}`}>
+      {client}
+    </Link>
+  );
 }
 
 export function FounderAttention({
@@ -70,7 +100,7 @@ export function FounderAttention({
                 <div className="attention-body">
                   <div className="attention-heading">
                     <strong>{item.entity}</strong>
-                    <span>{item.client ?? item.relevantSource.replace("_", " ")}</span>
+                    {item.client ? <CustomerLink client={item.client} /> : <span>{item.relevantSource.replace("_", " ")}</span>}
                   </div>
                   <h3>{item.title}</h3>
                   <p>{item.reason}</p>
@@ -119,13 +149,13 @@ export function FounderAttention({
               {fallbackClients.slice(0, 6).map((client) => (
                 <div key={client.normalizedClientKey}>
                   <div>
-                    <strong>{client.normalizedClientKey}</strong>
+                    <CustomerLink client={client.normalizedClientKey} />
                     <span>{client.operationalRiskReasons.join(" · ") || "Combined commercial and operational exposure"}</span>
                   </div>
                   <div className="compact-value">
                     <StatusPill tone="neutral">Unranked signal</StatusPill>
                     <span>
-                      {formatNumber(client.openDealCount)} open deals · {formatNumber(client.activeWorkOrderCount)} active WOs · {formatAmount(client.receivables, currency)} receivables
+                      {formatNumber(client.openDealCount)} open deals · {formatNumber(client.activeWorkOrderCount)} active WOs · {formatHydrationSafeAmount(client.receivables, currency)} receivables
                     </span>
                   </div>
                 </div>
