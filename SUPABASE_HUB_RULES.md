@@ -96,6 +96,7 @@ Migration verification must prove:
 - Keep `DATABASE_URL`, `CRON_SECRET`, monday credentials, Gemini/AI credentials, and any privileged Supabase credential server-only.
 - Prefer the least-privileged credentials available for the required runtime path.
 - The Vercel preview connection for Skylark must use `skylark_command_runtime`; never use the Project Hub `postgres` owner account for normal application runtime.
+- After changing branch-scoped Preview secrets or runtime variables, create a fresh `v2-integration` Preview deployment before validating database or internal sync behavior.
 - The Project Hub project-level service-role/secret credential is HUB-ADMIN ONLY and must not be treated as an ordinary Skylark application key.
 - Public/publishable Supabase keys may be used only where the application design and RLS policies make that access safe.
 
