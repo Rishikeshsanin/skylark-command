@@ -9,9 +9,12 @@ Skylark Command shares one Supabase project with multiple independent applicatio
 | Application | Skylark Command |
 | Slug | `skylark_command` |
 | Schema | `skylark_command` |
+| Runtime role | `skylark_command_runtime` |
 | Repository | `https://github.com/Rishikeshsanin/skylark-command` |
 
 Skylark application data, tables, views, app-specific database functions/RPCs, and related database objects must be isolated to `skylark_command.*` unless a shared Project Hub resource has been explicitly approved and registered.
+
+The deployed application must connect with the least-privileged `skylark_command_runtime` role rather than the Project Hub owner/superuser. Runtime sessions are expected to resolve application objects only through the `skylark_command` schema and system catalog access required by PostgreSQL.
 
 ## Other applications are out of scope
 
@@ -92,6 +95,7 @@ Migration verification must prove:
 
 - Keep `DATABASE_URL`, `CRON_SECRET`, monday credentials, Gemini/AI credentials, and any privileged Supabase credential server-only.
 - Prefer the least-privileged credentials available for the required runtime path.
+- The Vercel preview connection for Skylark must use `skylark_command_runtime`; never use the Project Hub `postgres` owner account for normal application runtime.
 - The Project Hub project-level service-role/secret credential is HUB-ADMIN ONLY and must not be treated as an ordinary Skylark application key.
 - Public/publishable Supabase keys may be used only where the application design and RLS policies make that access safe.
 
