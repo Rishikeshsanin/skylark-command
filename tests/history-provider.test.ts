@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createConfiguredHistoricalSnapshotProvider } from "@/lib/change-history";
+import {
+  combinePersistedAndLiveHistory,
+  createConfiguredHistoricalSnapshotProvider,
+  createVercelOidcHistoricalSnapshotProvider,
+} from "@/lib/change-history";
 import { createTemporalHistoricalSnapshotProvider } from "@/lib/change-history-core";
 import { buildCustomer360, detectChangeIntelligence } from "@/lib/analytics";
 import type {
@@ -152,4 +156,53 @@ test("history adapter and normal tests do not require DATABASE_URL and preserve 
     if (original === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = original;
   }
+});
+
+test("Vercel OIDC history provider is bounded and accepts only Skylark workspace", async () => {
+  let requestBodyJson = "";
+  const provider = createVercelOidcHistoricalSnapshotProvider({
+    oidcToken: "signed-vercel-token",
+    workspaceKey: "skylark-command",
+    fetchImpl: async (_input, init) => {
+      requestBodyJson = String(init?.body ?? "");
+      return new Response(JSON.stringify({ snapshots: [{
+        snapshotId: "persisted-1",
+        capturedAt: "2026-08-26T10:00:00Z",
+        deals: [],
+        workOrders: [],
+        normalizationIssues: [],
+      }] }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+  assert.ok(provider);
+  const snapshots = await provider.listSnapshots({ limit: 50, order: "desc" });
+  const requestBody = JSON.parse(requestBodyJson) as Record<string, unknown>;
+  assert.equal(snapshots[0].snapshotId, "persisted-1");
+  assert.equal(requestBody.workspaceKey, "skylark-command");
+  assert.equal(requestBody.limit, 49);
+  assert.equal(createVercelOidcHistoricalSnapshotProvider({ oidcToken: "token", workspaceKey: "other-app" }), null);
+});
+
+test("persisted baseline plus current live observation enables truthful Change Detective comparison", () => {
+  const persisted = storedSnapshot({ id: "persisted", snapshotTime: "2026-08-26T10:00:00Z", dealValue: 100, receivable: 10 });
+  const liveStored = storedSnapshot({ id: "unused", snapshotTime: "2026-08-26T11:00:00Z", dealValue: 125, receivable: 15 });
+  const livePoint = {
+    snapshotId: "live:2026-08-26T11:00:00.000Z",
+    capturedAt: "2026-08-26T11:00:00.000Z",
+    deals: liveStored.deals,
+    workOrders: liveStored.workOrders,
+    normalizationIssues: [],
+  };
+  const history = combinePersistedAndLiveHistory([{
+    snapshotId: persisted.temporal.snapshotId,
+    capturedAt: persisted.temporal.snapshotTime,
+    deals: persisted.deals,
+    workOrders: persisted.workOrders,
+    normalizationIssues: [],
+  }], livePoint);
+  const changes = detectChangeIntelligence(history);
+  assert.equal(changes.uniqueSnapshotCount, 2);
+  assert.equal(changes.fromSnapshotId, "persisted");
+  assert.equal(changes.toSnapshotId, livePoint.snapshotId);
+  assert.ok(changes.signals.some((signal) => signal.type === "open_pipeline_change"));
 });

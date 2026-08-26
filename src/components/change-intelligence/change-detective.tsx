@@ -35,12 +35,12 @@ export function ChangeDetective({ result }: { result: ChangeIntelligenceResult }
       <div className="dashboard-stack">
         <div className="state-card">
           <span className="state-icon" aria-hidden="true">Δ</span>
-          <p className="state-title">Historical comparison not available yet</p>
+          <p className="state-title">Comparison baseline is being established</p>
           <p className="state-description">
-            Change Detective needs at least two distinct persisted snapshots. The current live snapshot is available, but Skylark does not fabricate a historical baseline.
+            Change Detective needs two real observations before it can calculate a change. Skylark keeps this state explicit instead of manufacturing a historical baseline.
           </p>
         </div>
-        <Panel title="Method contract" description="What will happen as soon as Agent 1 snapshot history is wired">
+        <Panel title="Change detection contract" description="How Skylark will evaluate the next real observation">
           <div className="summary-list">
             <div><span>Aggregate shifts</span><strong>Delta + % + median/MAD baseline</strong></div>
             <div><span>Large new opportunities</span><strong>Prior P90 with IQR evidence</strong></div>
@@ -61,9 +61,9 @@ export function ChangeDetective({ result }: { result: ChangeIntelligenceResult }
           <p className="metric-hint">Deterministic/statistical signals</p>
         </article>
         <article className="metric-card">
-          <p className="metric-label">Distinct snapshots</p>
+          <p className="metric-label">Comparison points</p>
           <p className="metric-value">{formatNumber(result.uniqueSnapshotCount)}</p>
-          <p className="metric-hint">{result.snapshotCount - result.uniqueSnapshotCount} duplicate references ignored</p>
+          <p className="metric-hint">Persisted history plus current source observations</p>
         </article>
         <article className="metric-card">
           <p className="metric-label">Window start</p>
@@ -143,7 +143,7 @@ export function ChangeDetective({ result }: { result: ChangeIntelligenceResult }
             ))}
           </div>
         ) : (
-          <p className="muted-copy">No material deterministic changes were detected between the latest two distinct snapshots.</p>
+          <p className="muted-copy">No material deterministic changes were detected between the latest two real comparison points.</p>
         )}
       </Panel>
 
