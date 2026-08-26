@@ -2,6 +2,7 @@ import type { DataQualityIssue, Deal, WorkOrder } from "../types";
 import { fetchSkylarkSourceBoards } from "./monday";
 import type { MondayClientOptions } from "./monday";
 import { normalizeDeals, normalizeWorkOrders } from "./normalization";
+import { observeOperation, observeSyncOperation } from "./server/telemetry";
 
 export interface BusinessDataSnapshot {
   deals: Deal[];
@@ -25,24 +26,38 @@ export interface BusinessDataSnapshot {
 
 /** Fetches and normalizes the current monday.com source-of-truth rows. */
 export async function loadLiveBusinessData(options?: MondayClientOptions): Promise<BusinessDataSnapshot> {
-  const source = await fetchSkylarkSourceBoards(options);
-  const deals = normalizeDeals(source.deals.items);
-  const workOrders = normalizeWorkOrders(source.workOrders.items);
+  return observeOperation("business_data.live_load", { operation: "business_data_live_load", provider: "monday.com" }, async () => {
+    const source = await observeOperation(
+      "monday.fetch",
+      { operation: "monday_fetch", provider: "monday.com" },
+      () => fetchSkylarkSourceBoards(options),
+    );
+    const deals = observeSyncOperation(
+      "normalization.deals",
+      { operation: "normalize_deals" },
+      () => normalizeDeals(source.deals.items),
+    );
+    const workOrders = observeSyncOperation(
+      "normalization.work_orders",
+      { operation: "normalize_work_orders" },
+      () => normalizeWorkOrders(source.workOrders.items),
+    );
 
-  return {
-    deals: deals.records,
-    workOrders: workOrders.records,
-    normalizationIssues: [...deals.issues, ...workOrders.issues],
-    source: {
-      provider: "monday.com",
-      dealsBoardId: source.deals.boardId,
-      workOrdersBoardId: source.workOrders.boardId,
-      dealsBoardName: source.deals.boardName,
-      workOrdersBoardName: source.workOrders.boardName,
-      fetchedAt: new Date().toISOString(),
-      dataMode: "live",
-    },
-  };
+    return {
+      deals: deals.records,
+      workOrders: workOrders.records,
+      normalizationIssues: [...deals.issues, ...workOrders.issues],
+      source: {
+        provider: "monday.com",
+        dealsBoardId: source.deals.boardId,
+        workOrdersBoardId: source.workOrders.boardId,
+        dealsBoardName: source.deals.boardName,
+        workOrdersBoardName: source.workOrders.boardName,
+        fetchedAt: new Date().toISOString(),
+        dataMode: "live",
+      },
+    };
+  });
 }
 
 /**
@@ -50,14 +65,16 @@ export async function loadLiveBusinessData(options?: MondayClientOptions): Promi
  * temporal modes are resolved lazily so the live source adapter stays isolated.
  */
 export async function loadBusinessData(options?: MondayClientOptions): Promise<BusinessDataSnapshot> {
-  const mode = process.env.SKYLARK_DATA_MODE;
-  if (mode !== "temporal_preferred" && mode !== "temporal_only") {
-    return loadLiveBusinessData(options);
-  }
+  return observeOperation("business_data.load", { operation: "business_data_load" }, async () => {
+    const mode = process.env.SKYLARK_DATA_MODE;
+    if (mode !== "temporal_preferred" && mode !== "temporal_only") {
+      return loadLiveBusinessData(options);
+    }
 
-  const { loadBusinessDataForAnalytics } = await import("./data-platform/serving");
-  return loadBusinessDataForAnalytics({
-    mode,
-    liveLoader: () => loadLiveBusinessData(options),
+    const { loadBusinessDataForAnalytics } = await import("./data-platform/serving");
+    return loadBusinessDataForAnalytics({
+      mode,
+      liveLoader: () => loadLiveBusinessData(options),
+    });
   });
 }
