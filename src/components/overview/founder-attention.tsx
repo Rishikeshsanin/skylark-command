@@ -17,6 +17,27 @@ type FounderAttentionProps = {
   currency?: string;
 };
 
+function formatCompactInr(value: number): string {
+  const absolute = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  const unit = absolute >= 10_000_000
+    ? { divisor: 10_000_000, suffix: "Cr" }
+    : absolute >= 100_000
+      ? { divisor: 100_000, suffix: "L" }
+      : absolute >= 1_000
+        ? { divisor: 1_000, suffix: "K" }
+        : { divisor: 1, suffix: "" };
+  const rounded = Math.round((absolute / unit.divisor + Number.EPSILON) * 10) / 10;
+  const display = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${sign}₹${display}${unit.suffix}`;
+}
+
+function formatHydrationSafeAmount(value: number, currencyCode?: string): string {
+  return currencyCode?.trim().toUpperCase() === "INR"
+    ? formatCompactInr(value)
+    : formatAmount(value, currencyCode);
+}
+
 function formatEvidenceValue(
   key: string,
   value: FounderAttentionItem["evidenceMetrics"][string],
@@ -26,7 +47,7 @@ function formatEvidenceValue(
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string") return value;
   const monetary = /value|amount|receivable|pipeline|exposure/i.test(key);
-  return monetary ? formatAmount(value, currencyCode) : formatNumber(value, 1);
+  return monetary ? formatHydrationSafeAmount(value, currencyCode) : formatNumber(value, 1);
 }
 
 function labelize(key: string) {
@@ -134,7 +155,7 @@ export function FounderAttention({
                   <div className="compact-value">
                     <StatusPill tone="neutral">Unranked signal</StatusPill>
                     <span>
-                      {formatNumber(client.openDealCount)} open deals · {formatNumber(client.activeWorkOrderCount)} active WOs · {formatAmount(client.receivables, currency)} receivables
+                      {formatNumber(client.openDealCount)} open deals · {formatNumber(client.activeWorkOrderCount)} active WOs · {formatHydrationSafeAmount(client.receivables, currency)} receivables
                     </span>
                   </div>
                 </div>
