@@ -13,6 +13,7 @@ describe("runCopilotEvaluation", () => {
     expect(report.toolSelection.accuracy).not.toBeNull();
     expect(report.securityRejection.accuracy).not.toBeNull();
     expect(report.fallbackCorrectness.accuracy).not.toBeNull();
-    expect(report.passCount).toBeLessThanOrEqual(report.totalCases);
+    expect(report.failures).toEqual([]);
+    expect(report.passCount).toBe(report.totalCases);
   });
 });
