@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "SKYLARK_DATA_MODE": "temporal_preferred",
+    "SKYLARK_WORKSPACE_KEY": "skylark-command",
+    "SKYLARK_STALE_AFTER_MINUTES": "1500"
+  },
   "crons": [
     {
       "path": "/api/internal/sync/monday",
