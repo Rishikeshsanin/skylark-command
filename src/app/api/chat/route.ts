@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { orchestrateFounderQuestion } from "@/lib/agent/orchestrator";
+import { orchestrateFounderQuestionV2 } from "@/lib/agent/v2/orchestrator";
 import {
   chatRequestSchema,
   MAX_REQUEST_BYTES,
@@ -19,6 +19,22 @@ import { createRequestId } from "@/lib/server/request-id";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+function withNoExecutionTrace(response: ReturnType<typeof buildErrorAgentResponse>) {
+  return {
+    ...response,
+    analysis: {
+      planner: "deterministic_fallback" as const,
+      toolsUsed: [],
+      semanticMetricIds: [],
+      filters: [],
+      sourceSnapshot: null,
+      evidence: { dealItemIds: [], workOrderItemIds: [], dealCount: 0, workOrderCount: 0 },
+      context: { version: 1 as const, filters: [] },
+      caveats: ["The request ended before any deterministic analytical tool executed."],
+    },
+  };
+}
+
 export async function POST(request: Request) {
   const requestId = createRequestId();
   const startedAt = Date.now();
@@ -33,10 +49,10 @@ export async function POST(request: Request) {
         1,
         Math.ceil((rateLimit.resetAt - Date.now()) / 1_000),
       );
-      const response = buildErrorAgentResponse(
+      const response = withNoExecutionTrace(buildErrorAgentResponse(
         "RATE_LIMITED",
         "Too many chat requests. Please retry shortly.",
-      );
+      ));
 
       logEvent("warn", "chat.rate_limited", {
         requestId,
@@ -59,8 +75,9 @@ export async function POST(request: Request) {
       MAX_REQUEST_BYTES,
     );
 
-    const response = await orchestrateFounderQuestion(
+    const response = await orchestrateFounderQuestionV2(
       body.message,
+      body.context,
       undefined,
       undefined,
       requestId,
@@ -72,6 +89,8 @@ export async function POST(request: Request) {
       status: 200,
       latencyMs: Date.now() - startedAt,
       clarificationRequired: Boolean(response.clarification),
+      planner: response.analysis.planner,
+      toolsUsed: response.analysis.toolsUsed.join(" -> "),
     });
 
     return NextResponse.json(response, {
@@ -83,7 +102,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const safe = toSafePublicError(error);
-    const response = buildErrorAgentResponse(safe.code, safe.message);
+    const response = withNoExecutionTrace(buildErrorAgentResponse(safe.code, safe.message));
 
     logEvent(safe.status >= 500 ? "error" : "warn", "chat.failed", {
       requestId,
