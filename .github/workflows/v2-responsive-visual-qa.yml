@@ -62,7 +62,7 @@ jobs:
           cat /tmp/skylark-v2-qa.log
           exit 1
 
-      - name: Chromium responsive visual and accessibility QA
+      - name: Chromium focused responsive visual and accessibility QA
         run: node .github/scripts/v2-responsive-visual-qa.mjs
 
       - name: Production server diagnostics
@@ -76,14 +76,12 @@ jobs:
           MONDAY_DEALS_BOARD_ID: "5030844099"
           MONDAY_WORK_ORDERS_BOARD_ID: "5030844103"
           NODE_OPTIONS: --require=${{ github.workspace }}/.github/scripts/v2-qa-monday-fetch.cjs
+          QA_BASE_URL: http://127.0.0.1:3001
         run: |
-          if test -f /tmp/skylark-v2-qa.pid; then
-            kill "$(cat /tmp/skylark-v2-qa.pid)" || true
-          fi
-          npm run dev -- -H 127.0.0.1 > /tmp/skylark-v2-dev.log 2>&1 &
+          npm run dev -- -H 127.0.0.1 -p 3001 > /tmp/skylark-v2-dev.log 2>&1 &
           echo $! > /tmp/skylark-v2-dev.pid
           for attempt in {1..40}; do
-            if curl -fsS http://127.0.0.1:3000/api/health >/tmp/v2-dev-health.json; then
+            if curl -fsS http://127.0.0.1:3001/api/health >/tmp/v2-dev-health.json; then
               break
             fi
             sleep 1
@@ -101,7 +99,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Stop QA server
+      - name: Stop QA servers
         if: always()
         run: |
           if test -f /tmp/skylark-v2-qa.pid; then
