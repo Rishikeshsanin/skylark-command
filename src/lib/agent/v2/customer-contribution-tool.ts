@@ -20,6 +20,11 @@ export type CustomerContributionCall = Extract<
   { tool: "getCustomerContribution" }
 >;
 
+type PipelineScopeCall = Extract<
+  BaseToolCall,
+  { tool: "getPipelineSummary" | "getPipelineBySector" | "getPipelineByStage" }
+>;
+
 export interface CustomerContributionToolExecution {
   result: AnalyticsResult<unknown>;
   semanticMetricIds: MetricId[];
@@ -222,6 +227,12 @@ export function executeCustomerContributionTool(
   };
 }
 
+function isPipelineScopeCall(call: BaseToolCall): call is PipelineScopeCall {
+  return call.tool === "getPipelineSummary" ||
+    call.tool === "getPipelineBySector" ||
+    call.tool === "getPipelineByStage";
+}
+
 export function customerContributionScopeFromContext(
   previous: BaseToolCall | null,
   context: {
@@ -232,13 +243,10 @@ export function customerContributionScopeFromContext(
   },
 ): CustomerContributionCall | null {
   if (!previous) return null;
-  if (!["getPipelineSummary", "getPipelineBySector", "getPipelineByStage", "getCustomerContribution"].includes(previous.tool)) {
-    return null;
-  }
-
   if (previous.tool === "getCustomerContribution") {
     return { tool: "getCustomerContribution", args: { ...previous.args } };
   }
+  if (!isPipelineScopeCall(previous)) return null;
 
   const sector = previous.tool === "getPipelineBySector"
     ? previous.args.sector ?? (context.entity?.type === "sector" ? context.entity.id : undefined)
