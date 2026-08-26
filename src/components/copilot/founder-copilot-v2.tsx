@@ -77,10 +77,13 @@ export function FounderCopilotV2() {
       setShowJumpToLatest(true);
       return;
     }
-    bottomRef.current?.scrollIntoView({
-      behavior: prefersReducedMotion() ? "auto" : "smooth",
-      block: "end",
-    });
+    const thread = threadRef.current;
+    if (thread) {
+      thread.scrollTo({
+        top: thread.scrollHeight,
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+      });
+    }
     nearBottomRef.current = true;
     setShowJumpToLatest(false);
   }, []);
