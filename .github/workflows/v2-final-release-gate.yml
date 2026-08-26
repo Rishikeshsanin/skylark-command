@@ -1,0 +1,112 @@
+name: V2 Final Release Gate
+
+on:
+  push:
+    branches:
+      - v2-integration
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-final-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release-qualification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout exact candidate SHA
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Reproducible install
+        run: npm ci
+
+      - name: Repository migration/security/hygiene guardrails
+        run: node .github/scripts/v2-final-repository-guardrails.mjs
+
+      - name: Targeted migration regression
+        run: npx vitest run src/lib/data-platform/migrate.test.ts src/lib/data-platform/migration-numbering.test.ts src/lib/data-platform/postgres-sync.test.ts
+
+      - name: Fixed Copilot evaluation
+        run: npm run eval:copilot
+
+      - name: Full test suite
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Chromium browser QA dependency
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Start deterministic read-only QA server
+        env:
+          MONDAY_API_TOKEN: qa-read-only-browser-fixture
+          MONDAY_DEALS_BOARD_ID: "5030844099"
+          MONDAY_WORK_ORDERS_BOARD_ID: "5030844103"
+          SKYLARK_DATA_MODE: live
+          CRON_SECRET: qa-internal-release-gate-secret
+          NODE_OPTIONS: --require=${{ github.workspace }}/.github/scripts/v2-qa-monday-fetch.cjs
+        run: |
+          npm start -- -H 127.0.0.1 > /tmp/skylark-v2-final.log 2>&1 &
+          echo $! > /tmp/skylark-v2-final.pid
+          for attempt in {1..45}; do
+            if curl -fsS http://127.0.0.1:3000/api/health >/tmp/v2-final-health.json; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/skylark-v2-final.log
+          exit 1
+
+      - name: Request-ID and protected-internal-route smoke
+        run: |
+          curl -fsS -D /tmp/v2-health-headers.txt \
+            -H 'x-request-id: final-release-gate-request' \
+            http://127.0.0.1:3000/api/health >/tmp/v2-health-body.json
+          grep -qi '^x-request-id: final-release-gate-request' /tmp/v2-health-headers.txt
+
+          diagnostics_status="$(curl -sS -o /tmp/v2-diagnostics-body.json -w '%{http_code}' http://127.0.0.1:3000/api/internal/diagnostics)"
+          sync_status="$(curl -sS -o /tmp/v2-sync-body.json -w '%{http_code}' http://127.0.0.1:3000/api/internal/sync/monday)"
+          test "$diagnostics_status" = "401"
+          test "$sync_status" = "401"
+
+      - name: Focused post-integration browser regression
+        run: node .github/scripts/v2-post-integration-browser-qa.mjs
+
+      - name: Production server diagnostics on failure
+        if: failure()
+        run: cat /tmp/skylark-v2-final.log || true
+
+      - name: Upload post-integration browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-post-integration-browser-qa
+          path: artifacts/v2-post-integration
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Stop QA server
+        if: always()
+        run: |
+          if test -f /tmp/skylark-v2-final.pid; then
+            kill "$(cat /tmp/skylark-v2-final.pid)" || true
+          fi
