@@ -19,10 +19,8 @@ interface FakeRun {
 
 function run(overrides: Partial<FakeRun> & Pick<FakeRun, "id" | "started_at">): FakeRun {
   return {
-    id: overrides.id,
     workspace_key: "skylark-command",
     source_provider: "monday.com",
-    started_at: overrides.started_at,
     finished_at: null,
     status: "syncing",
     records_fetched: 0,
@@ -32,6 +30,8 @@ function run(overrides: Partial<FakeRun> & Pick<FakeRun, "id" | "started_at">): 
     source_watermark: null,
     snapshot_id: null,
     ...overrides,
+    id: overrides.id,
+    started_at: overrides.started_at,
   };
 }
 
