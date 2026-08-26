@@ -2,7 +2,7 @@
 
 Skylark Command's roadmap is organized by evidence, not hype. Capabilities move from research to product only when the underlying data and reliability contracts are strong enough to support them.
 
-## Shipped
+## Shipped in code
 
 ### Trust-native analytical foundation
 
@@ -12,7 +12,7 @@ Skylark Command's roadmap is organized by evidence, not hype. Capabilities move 
 - Exact normalized customer joins.
 - Data Health and known/unknown coverage.
 
-### Temporal intelligence
+### Temporal intelligence and production hardening
 
 - PostgreSQL temporal snapshot schema/store.
 - Successful-sync tracking and source watermarks.
@@ -20,6 +20,40 @@ Skylark Command's roadmap is organized by evidence, not hype. Capabilities move 
 - Historical snapshot provider with sparse-history behavior.
 - Change Intelligence for pipeline, customers, and receivables.
 - Change Detective product surface.
+- Migration checksum persistence and drift rejection.
+- Ordered `001_temporal_intelligence` → `002_temporal_production_hardening` → `003_identity_workspace_rbac` migration discovery.
+- Historical indexes and latest-successful snapshot lookup.
+- Bounded serverless database connections.
+- One-active-sync-per-workspace enforcement and abandoned-sync recovery.
+- Original sync-error preservation and last-known-good/freshness behavior.
+
+The hardening exists in code. An isolated real staging database still needs validation before production temporal rollout; no production migration or production cron is claimed as executed.
+
+### Identity, workspaces, and RBAC foundation
+
+- ManagedAuthProvider and Supabase Auth token validation.
+- Workspace, WorkspaceMember, WorkspaceConnector, and audit-event persistence contracts.
+- `OWNER`, `ADMIN`, `ANALYST`, `VIEWER` server-owned RBAC.
+- Public read-only demo mode when no explicit workspace selector is supplied.
+- Authenticated explicit-workspace mode with exact active membership authorization.
+- Workspace data-scope isolation and fail-closed behavior when workspace serving is not configured.
+- `VIEWER` scenario denial before scenario execution.
+
+This is a backend foundation. A full frontend login/account-management experience, workspace-specific secret resolution/sync, and production tenant onboarding are not claimed as shipped.
+
+### Observability and reliability
+
+- Structured JSON server logging.
+- AsyncLocalStorage request/workspace/sync context.
+- Request ID preservation/generation.
+- Request, tool, provider, database, and sync latency/outcome telemetry.
+- Error taxonomy and safe public-error separation.
+- Secret redaction with no prompt, chain-of-thought, or raw-source-record logging.
+- `CRON_SECRET`-protected internal diagnostics.
+- Conservative alert-condition helpers.
+- Fixed Copilot evaluation runner and `npm run eval:copilot`.
+
+No external observability vendor is required; the current event contract can be consumed by one later.
 
 ### Customer intelligence
 
@@ -43,6 +77,7 @@ Skylark Command's roadmap is organized by evidence, not hype. Capabilities move 
 - Validated Deal / Work Order overrides.
 - Same deterministic analytics for baseline and scenario.
 - Deterministic BASELINE / SCENARIO / DELTA output.
+- Workspace permission check before scenario execution.
 - No source write-back path.
 
 ### Product experience
@@ -55,29 +90,40 @@ Skylark Command's roadmap is organized by evidence, not hype. Capabilities move 
 - Customer 360.
 - Evidence-first Copilot output.
 - Responsive data visualizations.
+- Deterministic hydrated INR formatting.
+- >=44px mobile interaction targets where hardened.
+- Nested Jump-to-latest, focus restoration, sticky-composer clearance, and reduced-motion behavior.
 
 ## Next
 
-These items extend reliability and product usability without changing the trust model.
+These items operationalize the shipped foundations without changing the trust model.
 
-### Operationalize temporal capture
+### Validate and operationalize temporal capture
 
-- Configure a real scheduled caller for `/api/internal/sync/monday`.
+- Validate all migrations against an isolated real staging PostgreSQL database.
+- Configure a real scheduled caller for `/api/internal/sync/monday` only after that validation.
 - Establish retention/backup policy for analytical snapshots.
-- Add operational visibility for sync freshness, failures, and snapshot counts.
-- Add deployment-specific database connection/pooling guidance.
+- Validate snapshot cadence/freshness in the intended hosting plan.
+- Keep production cron disabled until rollout is explicitly approved.
+
+### Workspace productization
+
+- Build the frontend login/account-management experience.
+- Implement workspace-specific credential/secret resolution for source sync.
+- Add production tenant onboarding and deployment-specific identity/SSO configuration where required.
+- Expand audit administration/reporting surfaces.
+
+### Runtime hardening
+
+- Replace process-local rate limiting with a distributed backend.
+- Connect the existing structured event contract to a selected log/alert destination if operational needs justify it.
+- Validate operational thresholds with real traffic rather than changing semantics to fit dashboards.
 
 ### Evidence navigation
 
 - Make source snapshot IDs and record-level lineage easier to traverse from every material answer.
 - Improve comparison views between baseline/current records.
 - Standardize FACT / ESTIMATE / INTERPRETATION labels across all surfaces.
-
-### Runtime hardening
-
-- Replace process-local rate limiting with a distributed backend.
-- Add organization authentication/RBAC where deployment requirements justify it.
-- Add structured observability around tool routing, provider fallback, data freshness, and latency without logging sensitive question/source content.
 
 ### Scenario productization
 
