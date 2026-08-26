@@ -14,7 +14,8 @@
     "test:agent1": "tsx --test tests/analytics.test.ts tests/cross-board.test.ts tests/data-quality.test.ts tests/monday.test.ts tests/normalization.test.ts tests/unknowns.test.ts tests/founder-intelligence.test.ts",
     "test:agent3": "vitest run",
     "smoke": "node scripts/smoke.mjs",
-    "db:migrate": "tsx scripts/migrate-data-platform.ts"
+    "db:migrate": "tsx scripts/migrate-data-platform.ts",
+    "eval:copilot": "tsx scripts/run-copilot-eval.ts"
   },
   "dependencies": {
     "next": "^16.0.0",

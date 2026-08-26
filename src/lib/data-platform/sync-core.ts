@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { BusinessDataSnapshot } from "@/lib/business-data";
+import { classifyError } from "@/lib/server/error-taxonomy";
+import { logEvent } from "@/lib/server/logger";
+import { runWithTelemetryContext } from "@/lib/server/telemetry-context";
 import type { TemporalFreshness, TemporalSnapshotStore } from "./contracts";
 import { calculateSourceWatermark } from "./watermark";
 
@@ -39,62 +42,90 @@ export async function runBusinessDataSyncCore(options: RunSyncCoreOptions): Prom
   const staleAfterMs = options.staleAfterMs ?? DEFAULT_STALE_AFTER_MS;
   const syncId = createId();
   const startedAt = now().toISOString();
+  const wallStartedAt = performance.now();
 
-  await options.store.beginSync({ syncId, workspaceKey, startedAt });
-
-  try {
-    const snapshot = await options.liveLoader();
-    const sourceWatermark = calculateSourceWatermark(snapshot);
-    const snapshotId = createId();
-    const recordsFetched = snapshot.deals.length + snapshot.workOrders.length;
-    const recordsNormalized = recordsFetched;
-    const persisted = await options.store.persistSnapshot({
-      workspaceKey,
-      snapshotId,
-      snapshotTime: now().toISOString(),
-      sourceWatermark,
-      snapshot,
+  return runWithTelemetryContext({ workspaceKey, syncId }, async () => {
+    logEvent("info", "data.sync.started", {
+      operation: "temporal_sync",
+      resultStatus: "success",
+      lastSyncStartedAt: startedAt,
     });
-    const finishedAt = now().toISOString();
+    await options.store.beginSync({ syncId, workspaceKey, startedAt });
 
-    await options.store.completeSync({
-      syncId,
-      finishedAt,
-      recordsFetched,
-      recordsNormalized,
-      recordsPersisted: persisted.recordsPersisted,
-      sourceWatermark,
-      snapshotId: persisted.snapshotId,
-    });
-
-    const freshness = await options.store.getFreshness({
-      workspaceKey,
-      now: finishedAt,
-      staleAfterMs,
-    });
-
-    return {
-      syncId,
-      snapshotId: persisted.snapshotId,
-      sourceWatermark,
-      recordsFetched,
-      recordsNormalized,
-      recordsPersisted: persisted.recordsPersisted,
-      reusedExistingSnapshot: persisted.reusedExistingSnapshot,
-      freshness,
-    };
-  } catch (error) {
     try {
-      await options.store.failSync({
-        syncId,
-        finishedAt: now().toISOString(),
-        error: safeSyncError(error),
+      const snapshot = await options.liveLoader();
+      const sourceWatermark = calculateSourceWatermark(snapshot);
+      const snapshotId = createId();
+      const recordsFetched = snapshot.deals.length + snapshot.workOrders.length;
+      const recordsNormalized = recordsFetched;
+      const persisted = await options.store.persistSnapshot({
+        workspaceKey,
+        snapshotId,
+        snapshotTime: now().toISOString(),
+        sourceWatermark,
+        snapshot,
       });
-    } catch {
-      // Recording the failed run is best effort. A secondary database failure
-      // must never replace the original monday/persistence error seen by the
-      // caller; stale active runs are recovered by the next sync lease check.
+      const finishedAt = now().toISOString();
+
+      await options.store.completeSync({
+        syncId,
+        finishedAt,
+        recordsFetched,
+        recordsNormalized,
+        recordsPersisted: persisted.recordsPersisted,
+        sourceWatermark,
+        snapshotId: persisted.snapshotId,
+      });
+
+      const freshness = await options.store.getFreshness({
+        workspaceKey,
+        now: finishedAt,
+        staleAfterMs,
+      });
+
+      logEvent("info", "data.sync.succeeded", {
+        operation: "temporal_sync",
+        durationMs: Math.round((performance.now() - wallStartedAt) * 100) / 100,
+        resultStatus: "success",
+        recordsFetched,
+        recordsNormalized,
+        recordsPersisted: persisted.recordsPersisted,
+        sourceWatermark,
+        freshnessState: freshness.state,
+        lastSyncSucceededAt: freshness.lastSyncSucceededAt,
+        reusedExistingSnapshot: persisted.reusedExistingSnapshot,
+      });
+
+      return {
+        syncId,
+        snapshotId: persisted.snapshotId,
+        sourceWatermark,
+        recordsFetched,
+        recordsNormalized,
+        recordsPersisted: persisted.recordsPersisted,
+        reusedExistingSnapshot: persisted.reusedExistingSnapshot,
+        freshness,
+      };
+    } catch (error) {
+      const finishedAt = now().toISOString();
+      try {
+        await options.store.failSync({
+          syncId,
+          finishedAt,
+          error: safeSyncError(error),
+        });
+      } catch {
+        // Failure recording is best effort. Preserve the original monday or
+        // persistence error; abandoned active runs are recovered by lease checks.
+      }
+      logEvent("error", "data.sync.failed", {
+        operation: "temporal_sync",
+        durationMs: Math.round((performance.now() - wallStartedAt) * 100) / 100,
+        resultStatus: "error",
+        errorCategory: classifyError(error),
+        lastSyncFailedAt: finishedAt,
+      });
+      throw error;
     }
-    throw error;
-  }
+  });
 }
