@@ -5,6 +5,39 @@ import { Panel } from "@/components/ui/panel";
 import { StatusPill } from "@/components/ui/status-pill";
 import { WaterfallChart } from "@/components/visualization/waterfall-chart";
 
+const readinessCapabilities = [
+  {
+    icon: "↗",
+    title: "Pipeline movement",
+    description: "Open pipeline shifts with absolute and percentage deltas.",
+  },
+  {
+    icon: "◎",
+    title: "Sector shifts",
+    description: "Concentration changes surfaced against the prior real observation.",
+  },
+  {
+    icon: "₹",
+    title: "Cash movement",
+    description: "Receivables, billing and collections movement with known-value coverage.",
+  },
+  {
+    icon: "⇄",
+    title: "Record transitions",
+    description: "Exact monday item transitions such as won, lost, delayed or paused.",
+  },
+  {
+    icon: "◇",
+    title: "Large opportunities",
+    description: "New high-value opportunities evaluated against robust prior distributions.",
+  },
+  {
+    icon: "✓",
+    title: "Evidence trail",
+    description: "Every signal links back to deterministic source records and snapshot IDs.",
+  },
+] as const;
+
 function formatSignalValue(signal: ChangeSignal, value: ChangeMetricValue) {
   if (value === null) return "Unavailable";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -31,21 +64,133 @@ function directionLabel(signal: ChangeSignal) {
 
 export function ChangeDetective({ result }: { result: ChangeIntelligenceResult }) {
   if (result.uniqueSnapshotCount < 2) {
+    const observationCount = result.uniqueSnapshotCount;
+    const hasBaseline = observationCount > 0;
+
     return (
-      <div className="dashboard-stack">
-        <div className="state-card">
-          <span className="state-icon" aria-hidden="true">Δ</span>
-          <p className="state-title">Comparison baseline is being established</p>
-          <p className="state-description">
-            Change Detective needs two real observations before it can calculate a change. Skylark keeps this state explicit instead of manufacturing a historical baseline.
-          </p>
+      <div className="dashboard-stack change-readiness-layout">
+        <section className="change-readiness-hero" aria-labelledby="change-readiness-title">
+          <div className="change-readiness-copy">
+            <div className="change-readiness-status">
+              <span className={hasBaseline ? "change-readiness-dot is-ready" : "change-readiness-dot"} aria-hidden="true" />
+              {hasBaseline ? "Baseline captured" : "Baseline preparation"}
+            </div>
+            <h2 id="change-readiness-title">
+              {hasBaseline
+                ? "Change Detective is armed for the next real observation."
+                : "Change Detective is ready to establish its first real baseline."}
+            </h2>
+            <p>
+              {hasBaseline
+                ? "Skylark has a real source-backed baseline. The next distinct snapshot unlocks before-vs-after intelligence across pipeline, cash, delivery and record transitions — without inventing historical data."
+                : "Once the first source-backed snapshot is captured, Skylark will preserve it as the comparison baseline. No historical values are manufactured to make this screen look complete."}
+            </p>
+            <div className="change-readiness-actions" aria-label="Change Detective shortcuts">
+              <Link className="button button-primary" href="/data-health">View Data Health</Link>
+              <Link className="button button-secondary" href="/copilot">Open Founder Copilot</Link>
+              <Link className="change-readiness-link" href="/">Back to Overview →</Link>
+            </div>
+          </div>
+
+          <div className="change-readiness-orbit" aria-hidden="true">
+            <span className="change-orbit-ring change-orbit-ring-outer" />
+            <span className="change-orbit-ring change-orbit-ring-inner" />
+            <span className="change-orbit-node change-orbit-node-a" />
+            <span className="change-orbit-node change-orbit-node-b" />
+            <span className="change-orbit-core">Δ</span>
+            <span className="change-orbit-label">CHANGE ENGINE</span>
+          </div>
+        </section>
+
+        <div className="metric-grid metric-grid-four change-readiness-metrics">
+          <article className="metric-card metric-card-positive">
+            <p className="metric-label">Real observations</p>
+            <p className="metric-value">{formatNumber(observationCount)} / 2</p>
+            <p className="metric-hint">Two distinct observations unlock comparison</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Baseline</p>
+            <p className="metric-value change-readiness-word">{hasBaseline ? "Captured" : "Waiting"}</p>
+            <p className="metric-hint">Source-backed; never synthesized</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Decision method</p>
+            <p className="metric-value change-readiness-word">Deterministic</p>
+            <p className="metric-hint">Exact deltas + robust statistics</p>
+          </article>
+          <article className="metric-card">
+            <p className="metric-label">Predictive ML</p>
+            <p className="metric-value change-readiness-word">None</p>
+            <p className="metric-hint">No opaque score is shown as fact</p>
+          </article>
         </div>
-        <Panel title="Change detection contract" description="How Skylark will evaluate the next real observation">
-          <div className="summary-list">
-            <div><span>Aggregate shifts</span><strong>Delta + % + median/MAD baseline</strong></div>
-            <div><span>Large new opportunities</span><strong>Prior P90 with IQR evidence</strong></div>
-            <div><span>Record transitions</span><strong>Exact monday item ID comparison</strong></div>
-            <div><span>Predictive ML</span><strong>None</strong></div>
+
+        <section className="change-progress-card" aria-label="Change comparison readiness">
+          <div className="change-progress-heading">
+            <div>
+              <span className="change-section-kicker">Comparison readiness</span>
+              <h3>{hasBaseline ? "One more distinct observation to unlock signals" : "Capture the first real observation"}</h3>
+            </div>
+            <strong>{formatNumber(Math.min(observationCount, 2))}/2 observations</strong>
+          </div>
+          <div className="change-progress-track" aria-hidden="true">
+            <span style={{ width: hasBaseline ? "50%" : "10%" }} />
+          </div>
+          <div className="change-progress-steps">
+            <div className="change-progress-step is-complete">
+              <span>01</span>
+              <strong>Live source</strong>
+              <p>monday data is the source of record.</p>
+            </div>
+            <div className={`change-progress-step ${hasBaseline ? "is-complete" : "is-active"}`}>
+              <span>02</span>
+              <strong>Baseline</strong>
+              <p>{hasBaseline ? "A real observation is preserved." : "Waiting for the first persisted observation."}</p>
+            </div>
+            <div className={`change-progress-step ${hasBaseline ? "is-active" : ""}`}>
+              <span>03</span>
+              <strong>Next observation</strong>
+              <p>Only a genuinely changed source state advances history.</p>
+            </div>
+            <div className="change-progress-step">
+              <span>04</span>
+              <strong>Signals</strong>
+              <p>Evidence-backed deltas and transitions become available.</p>
+            </div>
+          </div>
+        </section>
+
+        <Panel title="What unlocks next" description="The comparison engine is already defined; these views appear as soon as a second real observation exists.">
+          <div className="change-capability-grid">
+            {readinessCapabilities.map((capability) => (
+              <article className="change-capability-card" key={capability.title}>
+                <span className="change-capability-icon" aria-hidden="true">{capability.icon}</span>
+                <div>
+                  <strong>{capability.title}</strong>
+                  <p>{capability.description}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="How comparisons are calculated" description="Trust rules stay visible before the first delta is ever shown.">
+          <div className="change-method-grid">
+            <div className="summary-list">
+              <div><span>Aggregate shifts</span><strong>Delta + % + median/MAD baseline</strong></div>
+              <div><span>Large new opportunities</span><strong>Prior P90 with IQR evidence</strong></div>
+              <div><span>Record transitions</span><strong>Exact monday item ID comparison</strong></div>
+              <div><span>Historical baseline</span><strong>Persisted real observations only</strong></div>
+            </div>
+            <div className="change-trust-callout">
+              <span className="change-trust-icon" aria-hidden="true">✓</span>
+              <div>
+                <strong>No fabricated history</strong>
+                <p>
+                  Missing history remains missing. Skylark waits for another real observation instead of backfilling a convincing-looking number.
+                </p>
+              </div>
+            </div>
           </div>
         </Panel>
       </div>
