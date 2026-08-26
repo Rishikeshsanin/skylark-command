@@ -65,9 +65,32 @@ jobs:
       - name: Chromium responsive visual and accessibility QA
         run: node .github/scripts/v2-responsive-visual-qa.mjs
 
-      - name: Server diagnostics
+      - name: Production server diagnostics
         if: failure()
         run: cat /tmp/skylark-v2-qa.log || true
+
+      - name: Overview hydration diagnostics in development mode
+        if: failure()
+        env:
+          MONDAY_API_TOKEN: qa-read-only-browser-fixture
+          MONDAY_DEALS_BOARD_ID: "5030844099"
+          MONDAY_WORK_ORDERS_BOARD_ID: "5030844103"
+          NODE_OPTIONS: --require=${{ github.workspace }}/.github/scripts/v2-qa-monday-fetch.cjs
+        run: |
+          if test -f /tmp/skylark-v2-qa.pid; then
+            kill "$(cat /tmp/skylark-v2-qa.pid)" || true
+          fi
+          npm run dev -- -H 127.0.0.1 > /tmp/skylark-v2-dev.log 2>&1 &
+          echo $! > /tmp/skylark-v2-dev.pid
+          for attempt in {1..40}; do
+            if curl -fsS http://127.0.0.1:3000/api/health >/tmp/v2-dev-health.json; then
+              break
+            fi
+            sleep 1
+          done
+          node .github/scripts/v2-hydration-diagnostic.mjs || true
+          cat /tmp/skylark-v2-dev.log || true
+          kill "$(cat /tmp/skylark-v2-dev.pid)" || true
 
       - name: Upload visual QA evidence
         if: always()
@@ -83,4 +106,7 @@ jobs:
         run: |
           if test -f /tmp/skylark-v2-qa.pid; then
             kill "$(cat /tmp/skylark-v2-qa.pid)" || true
+          fi
+          if test -f /tmp/skylark-v2-dev.pid; then
+            kill "$(cat /tmp/skylark-v2-dev.pid)" || true
           fi
