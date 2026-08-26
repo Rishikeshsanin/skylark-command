@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import "./copilot-visual-polish.css";
+import "./copilot-quality.css";
 import "./product-polish.css";
 import "./change-intelligence.css";
 import "./v2-design-system.css";
