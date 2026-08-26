@@ -16,6 +16,7 @@ import {
 } from "@/lib/agent/gemini-provider";
 import {
   type AnalysisTrustTrace,
+  type BaseToolCall,
   type ConversationContext,
   type PlannerProposal,
   type MetricId,
@@ -23,9 +24,14 @@ import {
 } from "./contracts";
 import { createGeminiAnalyticalPlanningProvider } from "./planning-provider";
 import {
+  parseMoneyMention,
   type AnalyticalPlanningProvider,
   planWithGuardrails,
 } from "./planner";
+import {
+  customerContributionScopeFromContext,
+  validateCustomerContributionProposalGrounding,
+} from "./customer-contribution-tool";
 import {
   executeRegisteredTool,
   legacyPlanForTool,
@@ -35,23 +41,122 @@ export type V2AgentResponse<T = unknown> = AgentResponse<T> & {
   analysis: AnalysisTrustTrace;
 };
 
+type PipelineScopeCall = Extract<
+  BaseToolCall,
+  { tool: "getPipelineSummary" | "getPipelineBySector" | "getPipelineByStage" }
+>;
+
 function emptyContext(context?: ConversationContext): ConversationContext {
   return context ?? { version: 1, filters: [] };
+}
+
+function baseCallFromContext(context?: ConversationContext): BaseToolCall | null {
+  const call = context?.previousResult?.toolCall;
+  if (!call) return null;
+  return call.tool === "runScenario" ? call.args.analysis : call;
+}
+
+function isPipelineScopeCall(call: BaseToolCall): call is PipelineScopeCall {
+  return call.tool === "getPipelineSummary" ||
+    call.tool === "getPipelineBySector" ||
+    call.tool === "getPipelineByStage";
+}
+
+function isCustomerContributionFollowUp(message: string): boolean {
+  return /\b(customers?|clients?)\b/i.test(message) &&
+    /\b(behind|contribut(?:e|es|ion|ions)|driv(?:e|es|ing)|make up|account for)\b/i.test(message);
+}
+
+function thresholdContinuation(message: string, context?: ConversationContext): ToolCall | null {
+  const previous = baseCallFromContext(context);
+  if (!previous || !isPipelineScopeCall(previous)) return null;
+  const amount = parseMoneyMention(message);
+  if (amount === null || !/\b(above|over|greater than|at least|>=)\b/i.test(message)) return null;
+
+  if (previous.tool === "getPipelineSummary") {
+    return {
+      tool: "getPipelineSummary",
+      args: {
+        ...previous.args,
+        ...(context?.entity?.type === "sector" && !previous.args.sector ? { sector: context.entity.id } : {}),
+        ...(context?.entity?.type === "stage" && !previous.args.stage ? { stage: context.entity.id } : {}),
+        minDealValue: amount,
+      },
+    };
+  }
+  if (previous.tool === "getPipelineBySector") {
+    return {
+      tool: "getPipelineBySector",
+      args: {
+        ...previous.args,
+        ...(context?.entity?.type === "sector" && !previous.args.sector ? { sector: context.entity.id } : {}),
+        minDealValue: amount,
+      },
+    };
+  }
+  return {
+    tool: "getPipelineByStage",
+    args: {
+      ...previous.args,
+      ...(context?.entity?.type === "stage" && !previous.args.stage ? { stage: context.entity.id } : {}),
+      minDealValue: amount,
+    },
+  };
+}
+
+function deterministicContinuation(message: string, context?: ConversationContext): ToolCall | null {
+  const previous = baseCallFromContext(context);
+  if (isCustomerContributionFollowUp(message) && context) {
+    return customerContributionScopeFromContext(previous, context);
+  }
+  return thresholdContinuation(message, context);
 }
 
 function dimensionFor(call: ToolCall): ConversationContext["dimension"] {
   const base = call.tool === "runScenario" ? call.args.analysis : call;
   if (base.tool === "getPipelineBySector") return "sector";
   if (base.tool === "getPipelineByStage") return "stage";
+  if (base.tool === "getCustomerContribution") return "client";
   if (base.tool === "getCustomer360") return "client";
   if (base.tool === "getPeriodComparison") return base.args.dimension;
   return undefined;
 }
 
-function entityFor(call: ToolCall): ConversationContext["entity"] {
+function bestSectorFromResult(data: unknown): string | undefined {
+  if (!Array.isArray(data)) return undefined;
+  const rows = data.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item));
+  return rows
+    .filter((row) => typeof row.sector === "string" && typeof row.openPipelineValue === "number")
+    .sort((a, b) =>
+      (b.openPipelineValue as number) - (a.openPipelineValue as number) ||
+      (typeof b.openDealCount === "number" ? b.openDealCount : 0) - (typeof a.openDealCount === "number" ? a.openDealCount : 0) ||
+      (a.sector as string).localeCompare(b.sector as string),
+    )[0]?.sector as string | undefined;
+}
+
+function bestStageFromResult(data: unknown): string | undefined {
+  if (!Array.isArray(data)) return undefined;
+  const rows = data.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item));
+  return rows
+    .filter((row) => typeof row.stage === "string" && typeof row.totalValue === "number")
+    .sort((a, b) =>
+      (b.totalValue as number) - (a.totalValue as number) ||
+      (typeof b.dealCount === "number" ? b.dealCount : 0) - (typeof a.dealCount === "number" ? a.dealCount : 0) ||
+      (a.stage as string).localeCompare(b.stage as string),
+    )[0]?.stage as string | undefined;
+}
+
+function entityFor(call: ToolCall, resultData?: unknown): ConversationContext["entity"] {
   const base = call.tool === "runScenario" ? call.args.analysis : call;
-  if (base.tool === "getPipelineBySector" && base.args.sector) return { type: "sector", id: base.args.sector, label: base.args.sector };
-  if (base.tool === "getPipelineByStage" && base.args.stage) return { type: "stage", id: base.args.stage, label: base.args.stage };
+  if (base.tool === "getPipelineBySector") {
+    const sector = base.args.sector ?? bestSectorFromResult(resultData);
+    if (sector) return { type: "sector", id: sector, label: sector };
+  }
+  if (base.tool === "getPipelineByStage") {
+    const stage = base.args.stage ?? bestStageFromResult(resultData);
+    if (stage) return { type: "stage", id: stage, label: stage };
+  }
+  if (base.tool === "getCustomerContribution" && base.args.customerKey) return { type: "client", id: base.args.customerKey, label: base.args.customerKey };
   if (base.tool === "getCustomer360") return { type: "client", id: base.args.customerKey, label: base.args.customerKey };
   if (base.tool === "getReceivables" && base.args.customerKey) return { type: "client", id: base.args.customerKey, label: base.args.customerKey };
   if (base.tool === "getWorkOrderHealth" && base.args.customerKey) return { type: "client", id: base.args.customerKey, label: base.args.customerKey };
@@ -61,7 +166,12 @@ function entityFor(call: ToolCall): ConversationContext["entity"] {
 
 function periodFor(call: ToolCall): ConversationContext["period"] {
   const base = call.tool === "runScenario" ? call.args.analysis : call;
-  if (base.tool === "getPipelineSummary" || base.tool === "getPipelineBySector" || base.tool === "getPipelineByStage") return base.args.period;
+  if (
+    base.tool === "getPipelineSummary" ||
+    base.tool === "getPipelineBySector" ||
+    base.tool === "getPipelineByStage" ||
+    base.tool === "getCustomerContribution"
+  ) return base.args.period;
   if (base.tool === "getPeriodComparison") return base.args.to;
   return undefined;
 }
@@ -72,13 +182,14 @@ function buildContext(
   snapshotId: string,
   metricIds: MetricId[],
   filters: AnalysisTrustTrace["filters"],
+  resultData?: unknown,
 ): ConversationContext {
   const metricId = metricIds[0] ?? previous?.metricId;
   return {
     version: 1,
     metricId,
     dimension: dimensionFor(call) ?? previous?.dimension,
-    entity: entityFor(call) ?? previous?.entity,
+    entity: entityFor(call, resultData) ?? previous?.entity,
     period: periodFor(call) ?? previous?.period,
     filters,
     previousResult: {
@@ -123,13 +234,42 @@ export async function orchestrateFounderQuestionV2(
   requestId?: string,
 ): Promise<V2AgentResponse<unknown>> {
   const snapshot = await loadBusinessData();
-  const planned = await planWithGuardrails(message, snapshot, context, planningProvider);
+  const continuation = deterministicContinuation(message, context);
+  const planned = continuation
+    ? {
+        proposal: { kind: "tool_call" as const, call: continuation, confidence: 1 },
+        planner: "deterministic_fallback" as const,
+        caveats: ["Structured prior analytical scope was reused deterministically for this follow-up; no metric was recalculated by the LLM."],
+      }
+    : await planWithGuardrails(message, snapshot, context, planningProvider);
 
   if (planned.proposal.kind !== "tool_call") {
     return clarificationWithTrace(planned.proposal, planned.planner, context, planned.caveats);
   }
 
   const call = planned.proposal.call;
+  if (call.tool === "getCustomerContribution" && planned.planner === "gemini") {
+    const groundingIssue = validateCustomerContributionProposalGrounding(
+      call,
+      message,
+      context,
+      snapshot,
+      parseMoneyMention(message),
+    );
+    if (groundingIssue) {
+      return clarificationWithTrace(
+        {
+          kind: "clarification",
+          question: "Could you clarify the exact customer-contribution scope?",
+          reason: `The proposed customer-contribution analysis failed grounding validation. ${groundingIssue}`,
+        },
+        planned.planner,
+        context,
+        planned.caveats,
+      );
+    }
+  }
+
   let execution;
   try {
     execution = await executeRegisteredTool(call, snapshot);
@@ -176,6 +316,7 @@ export async function orchestrateFounderQuestionV2(
     execution.snapshotId,
     execution.semanticMetricIds,
     execution.filters,
+    execution.result.data,
   );
   const response = composeAnalyticsResponse(
     legacyPlan,

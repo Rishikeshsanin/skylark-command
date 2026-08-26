@@ -51,8 +51,9 @@ export type AnalysisPeriod = z.infer<typeof analysisPeriodSchema>;
 export const analysisFilterSchema = z.discriminatedUnion("field", [
   z.object({ field: z.literal("sector"), operator: z.literal("eq"), value: z.string().trim().min(1).max(80) }).strict(),
   z.object({ field: z.literal("stage"), operator: z.literal("eq"), value: z.string().trim().min(1).max(80) }).strict(),
+  z.object({ field: z.literal("status"), operator: z.literal("eq"), value: z.enum(["Open", "Won"]) }).strict(),
   z.object({ field: z.literal("client"), operator: z.literal("eq"), value: z.string().trim().min(1).max(120) }).strict(),
-  z.object({ field: z.literal("deal_value"), operator: z.literal("gte"), value: z.number().finite().nonnegative() }).strict(),
+  z.object({ field: z.literal("deal_value"), operator: z.enum(["gte", "lte"]), value: z.number().finite().nonnegative() }).strict(),
   z.object({ field: z.literal("deal_ids"), operator: z.literal("in"), value: z.array(z.string().trim().min(1)).min(1).max(50) }).strict(),
   z.object({ field: z.literal("work_order_ids"), operator: z.literal("in"), value: z.array(z.string().trim().min(1)).min(1).max(50) }).strict(),
 ]);
@@ -79,10 +80,50 @@ const commonPipelineArgs = {
   period: analysisPeriodSchema.optional(),
 };
 
+const customerContributionArgsSchema = z
+  .object({
+    metricId: z.enum(["open_pipeline_value", "known_won_value"]).optional(),
+    status: z.enum(["Open", "Won"]).optional(),
+    sector: z.string().trim().min(1).max(80).optional(),
+    stage: z.string().trim().min(1).max(80).optional(),
+    customerKey: z.string().trim().min(1).max(120).optional(),
+    minDealValue: z.number().finite().nonnegative().optional(),
+    maxDealValue: z.number().finite().nonnegative().optional(),
+    period: analysisPeriodSchema.optional(),
+    dealIds: z.array(z.string().trim().min(1)).min(1).max(50).optional(),
+  })
+  .strict()
+  .superRefine((args, ctx) => {
+    if (
+      args.minDealValue !== undefined &&
+      args.maxDealValue !== undefined &&
+      args.minDealValue > args.maxDealValue
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["maxDealValue"],
+        message: "Maximum Deal value must be greater than or equal to minimum Deal value.",
+      });
+    }
+    if (
+      args.metricId !== undefined &&
+      args.status !== undefined &&
+      ((args.metricId === "open_pipeline_value" && args.status !== "Open") ||
+        (args.metricId === "known_won_value" && args.status !== "Won"))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["status"],
+        message: "Deal status conflicts with the selected semantic metric.",
+      });
+    }
+  });
+
 export const baseToolCallSchema = z.discriminatedUnion("tool", [
   z.object({ tool: z.literal("getPipelineSummary"), args: z.object(commonPipelineArgs).strict() }).strict(),
   z.object({ tool: z.literal("getPipelineBySector"), args: z.object({ ...commonPipelineArgs, stage: z.never().optional() }).strict() }).strict(),
   z.object({ tool: z.literal("getPipelineByStage"), args: z.object({ ...commonPipelineArgs, sector: z.never().optional() }).strict() }).strict(),
+  z.object({ tool: z.literal("getCustomerContribution"), args: customerContributionArgsSchema }).strict(),
   z.object({ tool: z.literal("getCustomer360"), args: z.object({ customerKey: z.string().trim().min(1).max(120) }).strict() }).strict(),
   z.object({ tool: z.literal("getReceivables"), args: z.object({ customerKey: z.string().trim().min(1).max(120).optional() }).strict() }).strict(),
   z.object({ tool: z.literal("getWorkOrderHealth"), args: z.object({ customerKey: z.string().trim().min(1).max(120).optional() }).strict() }).strict(),

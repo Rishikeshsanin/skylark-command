@@ -24,6 +24,7 @@ Approved tools and parameter shapes:
 - getPipelineSummary: {sector?, stage?, minDealValue?, period?}
 - getPipelineBySector: {sector?, minDealValue?, period?}
 - getPipelineByStage: {stage?, minDealValue?, period?}
+- getCustomerContribution: {metricId?, status?, sector?, stage?, customerKey?, minDealValue?, maxDealValue?, period?, dealIds?}; metricId is open_pipeline_value or known_won_value and status is Open or Won
 - getCustomer360: {customerKey}
 - getReceivables: {customerKey?}
 - getWorkOrderHealth: {customerKey?}
@@ -34,6 +35,7 @@ Use Agent 2 canonical semantic metric IDs exactly. Allowed periods: all_time, cu
 Scenario overrides are restricted to move_deal_close_period, move_deal_close_date, set_deal_included, set_deal_outcome, set_collection_amount, apply_receivable_payment, delay_work_order, resolve_work_order.
 For scenario IDs, dates, quarters and monetary values, copy only values explicitly supplied by the user or structured context. If required information is absent, return clarification.
 For a short follow-up such as "why?", reuse the previous structured tool call instead of guessing from prose.
+For customer-contribution follow-ups such as "which customers are behind those?", preserve the previous grounded pipeline scope and use getCustomerContribution; never infer contribution numerically in prose.
 If a request cannot be represented safely, return unsupported or clarification.`;
 
 function buildPrompt(message: string, context: unknown): string {

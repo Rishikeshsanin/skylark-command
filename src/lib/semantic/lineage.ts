@@ -145,13 +145,37 @@ function dimensionValue(record: EntityRecord, entity: SourceEntity, dimension: D
 }
 
 function matchesFilter(record: EntityRecord, entity: SourceEntity, filter: LineageFilter): boolean {
-  const actual = dimensionValue(record, entity, filter.dimension);
-  if (actual === null) return false;
-  const normalizedActual = normalizeLabel(actual);
-  const normalizedExpected = filter.values.map(normalizeLabel);
-  return filter.operator === "eq"
-    ? normalizedExpected.length === 1 && normalizedActual === normalizedExpected[0]
-    : normalizedExpected.includes(normalizedActual);
+  if ("dimension" in filter) {
+    const actual = dimensionValue(record, entity, filter.dimension);
+    if (actual === null) return false;
+    const normalizedActual = normalizeLabel(actual);
+    const normalizedExpected = filter.values.map(normalizeLabel);
+    return filter.operator === "eq"
+      ? normalizedExpected.length === 1 && normalizedActual === normalizedExpected[0]
+      : normalizedExpected.includes(normalizedActual);
+  }
+
+  if (entity !== "deal" || !dealRecord(record)) return false;
+  if (filter.field === "deal_ids") return filter.values.includes(record.mondayItemId);
+  if (record.value === null) return false;
+  return filter.operator === "gte"
+    ? record.value >= filter.value
+    : record.value <= filter.value;
+}
+
+function filterApplies(metricId: MetricId, entity: SourceEntity, filter: LineageFilter): boolean {
+  if ("dimension" in filter) {
+    return getMetricDefinition(metricId).validDimensions.includes(filter.dimension);
+  }
+  return entity === "deal";
+}
+
+function filterReason(filter: LineageFilter): string {
+  if ("dimension" in filter) return `excluded by ${filter.dimension} filter`;
+  if (filter.field === "deal_ids") return "excluded by grounded Deal ID scope";
+  return filter.operator === "gte"
+    ? "excluded by minimum Deal value filter"
+    : "excluded by maximum Deal value filter";
 }
 
 function reference(entity: SourceEntity, record: EntityRecord): RecordReference {
@@ -164,9 +188,7 @@ function metricLineage(
   filters: LineageFilter[],
 ): MetricRecordLineage {
   const population = metricPopulation(metricId, snapshot);
-  const applicableFilters = filters.filter((filter) =>
-    getMetricDefinition(metricId).validDimensions.includes(filter.dimension),
-  );
+  const applicableFilters = filters.filter((filter) => filterApplies(metricId, population.entity, filter));
   const included: EntityRecord[] = [];
   const excluded: ExcludedRecordReference[] = [];
 
@@ -177,13 +199,17 @@ function metricLineage(
     if (population.eligible(record)) {
       for (const filter of applicableFilters) {
         if (!matchesFilter(record, population.entity, filter)) {
-          reasons.push(`excluded by ${filter.dimension} filter`);
+          if (!("dimension" in filter) && filter.field === "deal_value" && dealRecord(record) && record.value === null) {
+            reasons.push("unknown Deal value cannot satisfy explicit value threshold");
+          } else {
+            reasons.push(filterReason(filter));
+          }
         }
       }
     }
 
     if (reasons.length === 0) included.push(record);
-    else excluded.push({ ...reference(population.entity, record), reasons });
+    else excluded.push({ ...reference(population.entity, record), reasons: [...new Set(reasons)] });
   }
 
   const knownValueCount = population.tracksCoverage
