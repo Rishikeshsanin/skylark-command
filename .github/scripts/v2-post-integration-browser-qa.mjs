@@ -67,6 +67,11 @@ async function inspectPage(browser, viewport, route, { smoke = false } = {}) {
     const beforeMoney = await page.locator("body").evaluate(() =>
       Array.from(document.querySelectorAll("body *"))
         .filter((element) => element.children.length === 0 && element.textContent?.includes("₹"))
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+        })
         .map((element) => element.textContent?.trim())
         .filter(Boolean)
         .slice(0, 24),
@@ -144,6 +149,11 @@ async function inspectPage(browser, viewport, route, { smoke = false } = {}) {
     const afterMoney = await page.locator("body").evaluate(() =>
       Array.from(document.querySelectorAll("body *"))
         .filter((element) => element.children.length === 0 && element.textContent?.includes("₹"))
+        .filter((element) => {
+          const style = getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+        })
         .map((element) => element.textContent?.trim())
         .filter(Boolean)
         .slice(0, 24),
