@@ -79,10 +79,14 @@ export function FounderCopilotV2() {
     }
     const thread = threadRef.current;
     if (thread) {
-      thread.scrollTo({
-        top: thread.scrollHeight,
-        behavior: force || prefersReducedMotion() ? "auto" : "smooth",
-      });
+      if (force || prefersReducedMotion()) {
+        thread.scrollTop = thread.scrollHeight;
+      } else {
+        thread.scrollTo({
+          top: thread.scrollHeight,
+          behavior: "smooth",
+        });
+      }
     }
     nearBottomRef.current = true;
     setShowJumpToLatest(false);
