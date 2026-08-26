@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Sql } from "postgres";
 import { makeDeal, makeWorkOrder } from "../../../tests/fixtures";
-import { PostgresTemporalSnapshotStore } from "./postgres";
+import {
+  PostgresTemporalSnapshotStore,
+  resolveTemporalMaxConnections,
+} from "./postgres";
 
 const deal = makeDeal({
   mondayItemId: "deal-1",
@@ -67,5 +70,13 @@ describe("Postgres temporal history enumeration", () => {
     expect(snapshot.temporal.sourceWatermark).toMatch(/^sha256:/);
     expect(snapshot.deals[0].value).toBeNull();
     expect(snapshot.workOrders[0].amountReceivable).toBeNull();
+  });
+
+  it("defaults to one serverless database connection and clamps overrides", () => {
+    expect(resolveTemporalMaxConnections(undefined)).toBe(1);
+    expect(resolveTemporalMaxConnections("2")).toBe(2);
+    expect(resolveTemporalMaxConnections("99")).toBe(5);
+    expect(resolveTemporalMaxConnections("0")).toBe(1);
+    expect(resolveTemporalMaxConnections("not-a-number")).toBe(1);
   });
 });
